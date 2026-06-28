@@ -36,12 +36,17 @@
   }
 
   /* ── SCREENS ── */
-  .screen { display: none; min-height: 100vh; }
-  .screen.active { display: flex; flex-direction: column; }
+  .screen {
+    display: none;
+    min-height: 100vh;
+  }
+  .screen.active {
+    display: flex;
+    flex-direction: column;
+  }
 
   /* ── LOADING ── */
   #screen-loading {
-    display: flex;
     align-items: center;
     justify-content: center;
     background: var(--navy);
