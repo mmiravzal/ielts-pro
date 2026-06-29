@@ -380,7 +380,7 @@ audio::-webkit-media-controls-panel { background: rgba(255,255,255,0.1); }
       <p>Enter your admin credentials</p>
     </div>
     <div id="admin-login-error" class="error-msg">Incorrect credentials.</div>
-    <div class="form-group"><label>Username</label><input type="text" id="input-admin-user" placeholder="admin"/></div>
+    <div class="form-group"><label>Admin Email</label><input type="email" id="input-admin-user" placeholder="you@example.com"/></div>
     <div class="form-group"><label>Password</label><input type="password" id="input-admin-pass" placeholder="••••••••"/></div>
     <button class="btn btn-primary" onclick="adminLogin()">Enter Admin Panel</button>
     <button class="btn btn-ghost" onclick="showScreen('screen-login')">← Back to Student Login</button>
@@ -528,18 +528,54 @@ audio::-webkit-media-controls-panel { background: rgba(255,255,255,0.1); }
 const SUPA_URL = 'https://nmwtpcbczurxrxcgpxyn.supabase.co';
 const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5td3RwY2JjenVyeHJ4Y2dweHluIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI2NjY0NjEsImV4cCI6MjA5ODI0MjQ2MX0.2FfyPGHCnmqBAmra259XqGhSznQeA-nVPtCpQDJVe18';
 
+// Holds the logged-in admin's Supabase Auth access token (JWT).
+// When present, REST calls authenticate as that user, so RLS policies
+// checking auth.role() = 'authenticated' (admin-only writes) pass.
+// Students never get this — they stay on the plain anon key.
+let ADMIN_TOKEN = null;
+
 const api = async (path, opts={}) => {
+  const bearer = ADMIN_TOKEN || SUPA_KEY;
   const r = await fetch(`${SUPA_URL}/rest/v1/${path}`, {
-    headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}`, 'Content-Type': 'application/json', 'Prefer': opts.prefer||'return=representation', ...opts.headers },
+    headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${bearer}`, 'Content-Type': 'application/json', 'Prefer': opts.prefer||'return=representation', ...opts.headers },
     ...opts
   });
-  if (!r.ok) { const e = await r.json(); throw new Error(e.message||'API error'); }
+  if (!r.ok) {
+    let msg = 'API error ('+r.status+')';
+    try { const e = await r.json(); msg = e.message || e.error_description || e.msg || msg; } catch(_){}
+    throw new Error(msg);
+  }
   const t = await r.text(); return t ? JSON.parse(t) : null;
 };
 const get = p => api(p, {method:'GET'});
 const post = (p,b) => api(p, {method:'POST', body:JSON.stringify(b)});
 const patch = (p,b) => api(p, {method:'PATCH', body:JSON.stringify(b), prefer:'return=representation'});
 const del = p => api(p, {method:'DELETE'});
+
+// ── SUPABASE AUTH (admin login) ──
+async function authApi(path, body) {
+  const r = await fetch(`${SUPA_URL}/auth/v1/${path}`, {
+    method: 'POST',
+    headers: { 'apikey': SUPA_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.error_description || data.msg || 'Auth error');
+  return data;
+}
+
+// Storage upload helper — uploads a File object to the given bucket/path
+// using the admin's auth token (required by the write policy in migration.sql).
+async function storageUpload(bucket, path, file) {
+  if (!ADMIN_TOKEN) throw new Error('Not authenticated as admin');
+  const r = await fetch(`${SUPA_URL}/storage/v1/object/${bucket}/${path}`, {
+    method: 'POST',
+    headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${ADMIN_TOKEN}`, 'Content-Type': file.type || 'text/html', 'x-upsert': 'true' },
+    body: file
+  });
+  if (!r.ok) { let msg='Upload failed'; try{const e=await r.json(); msg=e.message||msg;}catch(_){} throw new Error(msg); }
+  return `${SUPA_URL}/storage/v1/object/public/${bucket}/${path}`;
+}
 
 let S = {
   student: null, lessons: [], tasks: [], submissions: [],
@@ -560,7 +596,7 @@ function toast(msg, type='') {
   const t=document.getElementById('toast'); t.textContent=msg; t.className='toast show '+type;
   setTimeout(()=>t.classList.remove('show'),3000);
 }
-function logout() { S.student=null; showScreen('screen-login'); }
+function logout() { S.student=null; ADMIN_TOKEN=null; sessionStorage.removeItem('admin_token'); sessionStorage.removeItem('admin_refresh'); showScreen('screen-login'); }
 
 // ── AUTH ──
 async function studentLogin() {
@@ -580,15 +616,26 @@ async function studentLogin() {
 }
 
 async function adminLogin() {
-  const user=document.getElementById('input-admin-user').value.trim();
+  const email=document.getElementById('input-admin-user').value.trim();
   const pass=document.getElementById('input-admin-pass').value.trim();
+  const errEl=document.getElementById('admin-login-error');
   try {
-    const rows = await get(`admins?username=eq.${user}&password=eq.${pass}`);
-    if(!rows.length){ document.getElementById('admin-login-error').classList.add('show'); return; }
-    document.getElementById('admin-login-error').classList.remove('show');
+    const data = await authApi('token?grant_type=password', { email, password: pass });
+    ADMIN_TOKEN = data.access_token;
+    sessionStorage.setItem('admin_token', data.access_token);
+    sessionStorage.setItem('admin_refresh', data.refresh_token);
+    errEl.classList.remove('show');
     showScreen('screen-admin');
     loadAdminData();
-  } catch(e){ toast(e.message,'error'); }
+  } catch(e){ errEl.textContent = 'Incorrect email or password.'; errEl.classList.add('show'); }
+}
+
+// Restore an existing admin session (e.g. after a page refresh) so the
+// admin isn't logged out just by reloading the page.
+function tryRestoreAdminSession() {
+  const tok = sessionStorage.getItem('admin_token');
+  if (tok) { ADMIN_TOKEN = tok; return true; }
+  return false;
 }
 
 // ── STUDENT DATA ──
@@ -745,13 +792,63 @@ async function openTask(id) {
   const area = document.getElementById('task-render-area');
   area.innerHTML = '<div class="loading-inline">Loading task...</div>';
 
+  let parsedContent = {};
+  try { parsedContent = JSON.parse(task.content||'{}'); } catch(e){}
   if(task.skill==='writing') {
     renderWritingTask(task, sub, area);
+  } else if(task.task_type==='html_embed' && (task.html_url || parsedContent.html_url)) {
+    renderEmbeddedHtmlTask(task, sub, area);
   } else if(task.skill==='reading') {
     renderReadingTask(task, sub, area);
   } else if(task.skill==='listening') {
     renderListeningTask(task, sub, area);
   }
+}
+
+// ── EMBEDDED HTML TASK (uploaded self-contained Reading/Listening page) ──
+// The uploaded HTML is expected to manage its own questions/answers and,
+// when the student finishes, call:  window.parent.postMessage({type:'ielts-task-complete', score, total}, '*')
+// from inside the iframe. We listen for that message and record a submission.
+function renderEmbeddedHtmlTask(task, sub, area){
+  let data={}; try{data=JSON.parse(task.content||'{}');}catch(e){}
+  const url = task.html_url || data.html_url;
+  const instructions = data.instructions || '';
+  const isSubmitted = !!sub;
+
+  area.innerHTML = `<div class="reading-task-card">
+    ${instructions?`<div style="padding:16px 24px;background:#f0fdf4;border-bottom:1px solid var(--border);color:#166534;font-size:13px;">📋 ${instructions}</div>`:''}
+    <div style="padding:0;background:#fff">
+      <iframe id="embed-iframe" src="${url}" style="width:100%;height:70vh;border:none;display:block" sandbox="allow-scripts allow-forms allow-same-origin allow-popups"></iframe>
+    </div>
+    ${isSubmitted?`<div class="result-bar"><div class="result-score">Score: <span class="correct">${sub.score!=null?sub.score:'—'}</span>${sub.total!=null?`<span class="total">/${sub.total}</span>`:''} </div><span class="submitted-badge">✓ Submitted</span></div>`
+      :`<div class="task-footer"><div style="font-size:12px;color:var(--muted)">This task will be marked complete automatically when you finish it above.</div>
+         <button class="btn btn-outline" onclick="markEmbeddedComplete()">Mark as complete manually</button></div>`}
+  </div>`;
+
+  // Listen once for a completion signal from the embedded page.
+  if(!isSubmitted){
+    window.__embedCompleteHandler = async (ev) => {
+      if(!ev.data || ev.data.type!=='ielts-task-complete') return;
+      await submitEmbeddedTask(ev.data.score ?? null, ev.data.total ?? null, ev.data.answer ?? null);
+    };
+    window.addEventListener('message', window.__embedCompleteHandler);
+  }
+}
+
+async function submitEmbeddedTask(score, total, answerPayload){
+  const task=S.currentTask;
+  try{
+    await post('submissions',{ student_id:S.student.id, task_id:task.id, answer: JSON.stringify(answerPayload||{completed:true}), score, total });
+    toast('Task completed! ✓','success');
+    if(window.__embedCompleteHandler){ window.removeEventListener('message', window.__embedCompleteHandler); window.__embedCompleteHandler=null; }
+    await loadStudentData();
+    openTask(task.id);
+  } catch(e){ toast(e.message,'error'); }
+}
+
+function markEmbeddedComplete(){
+  if(!confirm('Mark this task as complete? Only do this if the embedded page does not report completion automatically.')) return;
+  submitEmbeddedTask(null, null, {completed:true, manual:true});
 }
 
 // ── READING ──
@@ -1047,15 +1144,21 @@ function backToLesson(){ showView('view-lesson'); }
 
 // ── ADMIN ──
 async function loadAdminData() {
-  const [groups,students,lessons,tasks,subs] = await Promise.all([
-    get('groups?order=name.asc'),
-    get('students?select=*,groups(name)&order=name.asc'),
-    get('lessons?order=order.asc'),
-    get('tasks?order=order.asc'),
-    get('submissions?select=*,students(name,student_code),tasks(title,skill,lessons(title))&order=submitted_at.desc')
-  ]);
-  S.groups=groups; S.students=students; S.adminLessons=lessons; S.adminTasks=tasks; S.adminSubs=subs;
-  renderAdminStats(); renderGroupsTable(); renderStudentsTable(); renderLessonsTable(); renderTasksTable(); renderSubmissionsTable();
+  try {
+    const [groups,students,lessons,tasks,subs] = await Promise.all([
+      get('groups?order=name.asc'),
+      get('students?select=*,groups(name)&order=name.asc'),
+      get('lessons?order=order.asc'),
+      get('tasks?order=order.asc'),
+      get('submissions?select=*,students(name,student_code),tasks(title,skill,lessons(title))&order=submitted_at.desc')
+    ]);
+    S.groups=groups; S.students=students; S.adminLessons=lessons; S.adminTasks=tasks; S.adminSubs=subs;
+    renderAdminStats(); renderGroupsTable(); renderStudentsTable(); renderLessonsTable(); renderTasksTable(); renderSubmissionsTable();
+  } catch(e) {
+    toast('Session expired or access denied — please log in again','error');
+    ADMIN_TOKEN=null; sessionStorage.removeItem('admin_token'); sessionStorage.removeItem('admin_refresh');
+    showScreen('screen-admin-login');
+  }
 }
 
 function renderAdminStats(){
@@ -1089,8 +1192,9 @@ function renderStudentsTable(){
 function renderLessonsTable(){
   const el=document.getElementById('lessons-table');
   if(!S.adminLessons.length){el.innerHTML='<div class="empty-state"><div class="icon">📋</div><h3>No lessons yet</h3></div>';return;}
-  el.innerHTML=`<div class="data-table"><table><tr><th>Lesson</th><th>Description</th><th>Order</th><th>Actions</th></tr>
+  el.innerHTML=`<div class="data-table"><table><tr><th>Lesson</th><th>Description</th><th>Order</th><th>Status</th><th>Actions</th></tr>
     ${S.adminLessons.map(l=>`<tr><td><strong>${l.title}</strong></td><td style="color:var(--muted);font-size:13px">${l.description||''}</td><td>${l.order}</td>
+    <td><span class="skill-pill" style="background:${l.published?'#dcfce7':'#fef3c7'};color:${l.published?'#15803d':'#b45309'}">${l.published?'Published':'Draft'}</span></td>
     <td><button class="btn btn-outline btn-sm" onclick="openModal('lesson','${l.id}')">Edit</button>
     <button class="btn btn-danger btn-sm" style="margin-left:6px" onclick="deleteItem('lessons','${l.id}')">Delete</button></td></tr>`).join('')}
   </table></div>`;
@@ -1099,16 +1203,42 @@ function renderLessonsTable(){
 function renderTasksTable(){
   const el=document.getElementById('tasks-table');
   if(!S.adminTasks.length){el.innerHTML='<div class="empty-state"><div class="icon">📝</div><h3>No tasks yet</h3></div>';return;}
-  el.innerHTML=`<div class="data-table"><table><tr><th>Title</th><th>Lesson</th><th>Skill</th><th>Type</th><th>Actions</th></tr>
+  // Group by lesson so up/down reordering moves a task within its own lesson, in order.
+  const byLesson = {};
+  S.adminTasks.slice().sort((a,b)=>(a.order||0)-(b.order||0)).forEach(t=>{ (byLesson[t.lesson_id]=byLesson[t.lesson_id]||[]).push(t); });
+
+  el.innerHTML=`<div class="data-table"><table><tr><th>Title</th><th>Lesson</th><th>Skill</th><th>Type</th><th>Reorder</th><th>Actions</th></tr>
     ${S.adminTasks.map(t=>{
       const l=S.adminLessons.find(l=>l.id===t.lesson_id);
+      const siblings=byLesson[t.lesson_id]||[];
+      const idx=siblings.findIndex(s=>s.id===t.id);
+      const upId = idx>0 ? siblings[idx-1].id : null;
+      const downId = idx<siblings.length-1 ? siblings[idx+1].id : null;
       return `<tr><td><strong>${t.title}</strong></td><td style="font-size:13px;color:var(--muted)">${l?.title||'?'}</td>
       <td><span class="skill-pill pill-${t.skill}">${t.skill}</span></td>
       <td style="font-size:13px">${t.task_type||'—'}</td>
+      <td>
+        <button class="btn btn-outline btn-sm" ${upId?'':'disabled style="opacity:.3"'} onclick="moveTask('${t.id}','${upId}')" title="Move up">↑</button>
+        <button class="btn btn-outline btn-sm" ${downId?'':'disabled style="opacity:.3"'} onclick="moveTask('${downId}','${t.id}')" title="Move down">↓</button>
+      </td>
       <td><button class="btn btn-outline btn-sm" onclick="openModal('task','${t.id}')">Edit</button>
       <button class="btn btn-danger btn-sm" style="margin-left:6px" onclick="deleteItem('tasks','${t.id}')">Delete</button></td></tr>`;
     }).join('')}
   </table></div>`;
+}
+
+// Swap the "order" values of two tasks (a moves up, b moves down) within the same lesson.
+async function moveTask(idA, idB){
+  if(!idA||!idB) return;
+  const a=S.adminTasks.find(t=>t.id===idA), b=S.adminTasks.find(t=>t.id===idB);
+  if(!a||!b) return;
+  try{
+    await Promise.all([
+      patch(`tasks?id=eq.${a.id}`,{order:b.order}),
+      patch(`tasks?id=eq.${b.id}`,{order:a.order})
+    ]);
+    loadAdminData();
+  } catch(e){ toast(e.message,'error'); }
 }
 
 function renderSubmissionsTable(){
@@ -1129,6 +1259,55 @@ function renderSubmissionsTable(){
 function adminNav(section,el){ document.querySelectorAll('.sidebar-item').forEach(i=>i.classList.remove('active')); el.classList.add('active'); document.querySelectorAll('.admin-section').forEach(s=>s.classList.remove('active')); document.getElementById(`admin-${section}`).classList.add('active'); }
 
 // ── MODAL ──
+// ── TASK MODAL: skill-specific fields ──
+// Reading & Listening: upload a self-contained interactive HTML file
+// (stored in Supabase Storage), embedded via iframe for students.
+// Writing: dedicated title/instructions/time-limit fields, no JSON needed.
+// Vocabulary (or anything else): falls back to the raw JSON editor.
+function onTaskSkillChange(){
+  const skill=document.getElementById('m-skill').value;
+  const t=S.editId?S.adminTasks.find(x=>x.id===S.editId):null;
+  renderTaskSkillFields(skill, skill===t?.skill?t:null);
+}
+
+function renderTaskSkillFields(skill, t){
+  const el=document.getElementById('task-skill-fields');
+  if(skill==='reading' || skill==='listening'){
+    const existingUrl = t?.html_url || '';
+    let existingData={}; if(t) try{existingData=JSON.parse(t.content||'{}');}catch(e){}
+    el.innerHTML = `
+      <div class="form-group">
+        <label>${skill==='reading'?'📖 Reading':'🎧 Listening'} HTML file</label>
+        <input type="file" id="m-htmlfile" accept=".html,text/html"/>
+        <div class="hint-text" id="m-htmlfile-status">${existingUrl?`Currently set: <a href="${existingUrl}" target="_blank">view uploaded file</a>. Choose a new file to replace it.`:'Upload a self-contained HTML page with the task and its own questions/answers built in.'}</div>
+        <input type="hidden" id="m-htmlurl" value="${existingUrl}"/>
+        <input type="hidden" id="m-htmlpath" value="${t?.html_path||''}"/>
+      </div>
+      <div class="form-group"><label>Instructions shown above the task (optional)</label>
+        <input id="m-instructions" value="${existingData.instructions||''}" placeholder="e.g. Read the passage, then answer inside the embedded task."/>
+      </div>`;
+  } else if(skill==='writing'){
+    let data={}; if(t) try{data=JSON.parse(t.content||'{}');}catch(e){data={};}
+    el.innerHTML = `
+      <div class="form-group"><label>Instructions / Prompt</label>
+        <textarea id="m-prompt" style="min-height:120px">${data.prompt||''}</textarea>
+      </div>
+      <div class="form-group"><label>Minimum word count</label>
+        <input type="number" id="m-minwords" value="${data.min_words||150}"/>
+      </div>
+      <div class="form-group"><label>Time limit in minutes (optional)</label>
+        <input type="number" id="m-timelimit" value="${data.time_limit_minutes||''}"/>
+      </div>`;
+  } else {
+    let contentVal=''; if(t) try{contentVal=JSON.stringify(JSON.parse(t.content),null,2);}catch(e){contentVal=t.content||'';}
+    el.innerHTML = `<div class="form-group"><label>Task Type (e.g. gap_fill, tfng, mcq, essay)</label><input id="m-type" value="${t?.task_type||''}"/></div>
+      <div class="form-group"><label>Content (JSON)</label>
+        <textarea id="m-content" style="min-height:140px;font-family:monospace;font-size:12px">${contentVal}</textarea>
+        <div class="hint-text">{"questions":[{"type":"mcq","question":"...","options":["..."],"answer":"A"}]}</div>
+      </div>`;
+  }
+}
+
 function openModal(type, editId=null){
   S.modalType=type; S.editId=editId;
   const title=document.getElementById('modal-title');
@@ -1150,25 +1329,24 @@ function openModal(type, editId=null){
     title.textContent=editId?'Edit Lesson':'Add Lesson';
     body.innerHTML=`<div class="form-group"><label>Title</label><input id="m-title" value="${l?.title||''}"/></div>
       <div class="form-group"><label>Description</label><input id="m-desc" value="${l?.description||''}"/></div>
-      <div class="form-group"><label>Order (number)</label><input type="number" id="m-order" value="${l?.order||1}"/></div>`;
+      <div class="form-group"><label>Order (number)</label><input type="number" id="m-order" value="${l?.order||1}"/></div>
+      <div class="form-group" style="display:flex;align-items:center;gap:8px">
+        <input type="checkbox" id="m-published" style="width:auto" ${(l?l.published:true)?'checked':''}/>
+        <label style="margin:0">Published (visible to students)</label>
+      </div>`;
   } else if(type==='task'){
     const t=editId?S.adminTasks.find(x=>x.id===editId):null;
     const lOpts=S.adminLessons.map(l=>`<option value="${l.id}" ${t?.lesson_id===l.id?'selected':''}>${l.title}</option>`).join('');
     title.textContent=editId?'Edit Task':'Add Task';
-    let contentVal=''; if(t) try{contentVal=JSON.stringify(JSON.parse(t.content),null,2);}catch(e){contentVal=t.content||'';}
+    const skill = t?.skill || 'reading';
     body.innerHTML=`<div class="form-group"><label>Title</label><input id="m-title" value="${t?.title||''}"/></div>
       <div class="form-group"><label>Lesson</label><select id="m-lesson">${lOpts}</select></div>
-      <div class="form-group"><label>Skill</label><select id="m-skill">
-        ${['reading','listening','writing','vocabulary'].map(sk=>`<option value="${sk}" ${t?.skill===sk?'selected':''}>${sk}</option>`).join('')}
+      <div class="form-group"><label>Skill</label><select id="m-skill" onchange="onTaskSkillChange()">
+        ${['reading','listening','writing','vocabulary'].map(sk=>`<option value="${sk}" ${skill===sk?'selected':''}>${sk}</option>`).join('')}
       </select></div>
-      <div class="form-group"><label>Task Type (e.g. gap_fill, tfng, mcq, essay)</label><input id="m-type" value="${t?.task_type||''}"/></div>
-      <div class="form-group"><label>Content (JSON)</label>
-        <textarea id="m-content" style="min-height:140px;font-family:monospace;font-size:12px">${contentVal}</textarea>
-        <div class="hint-text">📖 Reading: {"passage_url":"https://...","questions":[{"type":"tfng","question":"...","answer":"True"}]}<br>
-        🎧 Listening: {"audio_url":"https://...","instructions":"...","questions":[{"type":"gap_fill","question":"...","answer":"..."}]}<br>
-        ✍️ Writing: {"prompt":"The chart shows...","min_words":150}</div>
-      </div>
+      <div id="task-skill-fields"></div>
       <div class="form-group"><label>Order</label><input type="number" id="m-order" value="${t?.order||1}"/></div>`;
+    renderTaskSkillFields(skill, t);
   }
   document.getElementById('modal-overlay').classList.add('open');
 }
@@ -1179,30 +1357,81 @@ function closeModalOutside(e){ if(e.target===document.getElementById('modal-over
 async function saveModal(){
   const type=S.modalType;
   try{
+    let result;
     if(type==='group'){
       const name=document.getElementById('m-name').value.trim(); if(!name) return toast('Enter group name','error');
-      if(S.editId) await patch(`groups?id=eq.${S.editId}`,{name}); else await post('groups',{name});
+      result = S.editId ? await patch(`groups?id=eq.${S.editId}`,{name}) : await post('groups',{name});
     } else if(type==='student'){
       const name=document.getElementById('m-name').value.trim(), code=document.getElementById('m-code').value.trim(), group_id=document.getElementById('m-group').value||null;
       if(!name||!code) return toast('Name and ID required','error');
-      if(S.editId) await patch(`students?id=eq.${S.editId}`,{name,student_code:code,group_id}); else await post('students',{name,student_code:code,group_id});
+      result = S.editId ? await patch(`students?id=eq.${S.editId}`,{name,student_code:code,group_id}) : await post('students',{name,student_code:code,group_id});
     } else if(type==='lesson'){
       const title=document.getElementById('m-title').value.trim(), desc=document.getElementById('m-desc').value.trim(), order=parseInt(document.getElementById('m-order').value)||1;
+      const published=document.getElementById('m-published').checked;
       if(!title) return toast('Title required','error');
-      if(S.editId) await patch(`lessons?id=eq.${S.editId}`,{title,description:desc,order}); else await post('lessons',{title,description:desc,order});
+      result = S.editId ? await patch(`lessons?id=eq.${S.editId}`,{title,description:desc,order,published}) : await post('lessons',{title,description:desc,order,published});
     } else if(type==='task'){
       const title=document.getElementById('m-title').value.trim(), lesson_id=document.getElementById('m-lesson').value, skill=document.getElementById('m-skill').value;
-      const task_type=document.getElementById('m-type').value.trim(), content=document.getElementById('m-content').value.trim(), order=parseInt(document.getElementById('m-order').value)||1;
+      const order=parseInt(document.getElementById('m-order').value)||1;
       if(!title||!lesson_id) return toast('Title and lesson required','error');
-      // validate JSON
-      try{ JSON.parse(content); } catch(e){ return toast('Content must be valid JSON','error'); }
-      if(S.editId) await patch(`tasks?id=eq.${S.editId}`,{title,lesson_id,skill,task_type,content,order}); else await post('tasks',{title,lesson_id,skill,task_type,content,order});
+
+      let payload = { title, lesson_id, skill, order };
+
+      if(skill==='reading' || skill==='listening'){
+        const fileInput=document.getElementById('m-htmlfile');
+        let html_url=document.getElementById('m-htmlurl').value||null;
+        let html_path=document.getElementById('m-htmlpath').value||null;
+        if(fileInput && fileInput.files && fileInput.files[0]){
+          const file=fileInput.files[0];
+          const path=`tasks/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9_.-]/g,'_')}`;
+          toast('Uploading file…','');
+          html_url = await storageUpload('task-html', path, file);
+          html_path = path;
+        }
+        if(!html_url) return toast('Please upload an HTML file for this task','error');
+        payload.task_type = 'html_embed';
+        payload.html_url = html_url;
+        payload.html_path = html_path;
+        payload.content = JSON.stringify({ html_url, instructions: document.getElementById('m-instructions').value.trim() });
+      } else if(skill==='writing'){
+        const prompt=document.getElementById('m-prompt').value.trim();
+        const min_words=parseInt(document.getElementById('m-minwords').value)||150;
+        const time_limit_minutes=document.getElementById('m-timelimit').value?parseInt(document.getElementById('m-timelimit').value):null;
+        if(!prompt) return toast('Enter writing instructions/prompt','error');
+        payload.task_type='essay';
+        payload.content=JSON.stringify({ prompt, min_words, time_limit_minutes });
+      } else {
+        const task_type=document.getElementById('m-type').value.trim();
+        const content=document.getElementById('m-content').value.trim();
+        try{ JSON.parse(content); } catch(e){ return toast('Content must be valid JSON','error'); }
+        payload.task_type=task_type;
+        payload.content=content;
+      }
+
+      result = S.editId ? await patch(`tasks?id=eq.${S.editId}`,payload) : await post('tasks',payload);
     }
+
+    // Safety net: a write that returns no row almost always means an RLS
+    // policy silently blocked it (insert went through, read-back didn't,
+    // or vice versa). Surface this loudly instead of pretending it saved.
+    if (!result || (Array.isArray(result) && result.length===0)) {
+      throw new Error('Save did not return a confirmed record — check that you are logged in as admin and database permissions (RLS) allow this write.');
+    }
+
     closeModal(); toast('Saved!','success'); loadAdminData();
   } catch(e){ toast(e.message,'error'); }
 }
 
-async function deleteItem(table,id){ if(!confirm('Delete this item?'))return; try{ await del(`${table}?id=eq.${id}`); toast('Deleted','success'); loadAdminData(); }catch(e){ toast(e.message,'error'); } }
+async function deleteItem(table,id){
+  if(!confirm('Delete this item?'))return;
+  try{
+    const result = await api(`${table}?id=eq.${id}`, {method:'DELETE', prefer:'return=representation'});
+    if (!result || (Array.isArray(result) && result.length===0)) {
+      throw new Error('Nothing was deleted — you may not have permission, or it was already removed.');
+    }
+    toast('Deleted','success'); loadAdminData();
+  }catch(e){ toast(e.message,'error'); }
+}
 
 // ── SUBMISSION REVIEW ──
 function openSubmission(id){
@@ -1233,7 +1462,12 @@ document.addEventListener('keydown',e=>{
   if(e.key==='Escape'){ closeModal(); closeSubModal(); }
 });
 
-window.addEventListener('load',()=>{ setTimeout(()=>showScreen('screen-login'),800); });
+window.addEventListener('load',()=>{
+  setTimeout(()=>{
+    if (tryRestoreAdminSession()) { showScreen('screen-admin'); loadAdminData(); }
+    else showScreen('screen-login');
+  },800);
+});
 </script>
 </body>
 </html>
