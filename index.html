@@ -564,17 +564,23 @@ async function authApi(path, body) {
   return data;
 }
 
-// Storage upload helper — uploads a File object to the given bucket/path
-// using the admin's auth token (required by the write policy in migration.sql).
-async function storageUpload(bucket, path, file) {
-  if (!ADMIN_TOKEN) throw new Error('Not authenticated as admin');
-  const r = await fetch(`${SUPA_URL}/storage/v1/object/${bucket}/${path}`, {
-    method: 'POST',
-    headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${ADMIN_TOKEN}`, 'Content-Type': file.type || 'text/html', 'x-upsert': 'true' },
-    body: file
-  });
-  if (!r.ok) { let msg='Upload failed'; try{const e=await r.json(); msg=e.message||msg;}catch(_){} throw new Error(msg); }
-  return `${SUPA_URL}/storage/v1/object/public/${bucket}/${path}`;
+// Reads a locally-selected HTML file as plain text and stashes it in a
+// hidden textarea, so it gets saved straight into the task's content JSON.
+// (Supabase Storage/Edge Functions both force text/html files to be served
+// as text/plain — by design, to prevent using them as a webpage host —
+// so we store the HTML inline in the database instead of uploading it.)
+function onHtmlFileSelected(input){
+  const file = input.files && input.files[0];
+  const statusEl = document.getElementById('m-htmlfile-status');
+  if(!file) return;
+  if(!/\.html?$/i.test(file.name)) { statusEl.textContent='Please choose an .html file.'; return; }
+  const reader = new FileReader();
+  reader.onload = () => {
+    document.getElementById('m-htmlcontent').value = reader.result;
+    statusEl.textContent = `Loaded "${file.name}" (${Math.round(file.size/1024)} KB) — will be saved when you click Save.`;
+  };
+  reader.onerror = () => { statusEl.textContent = 'Could not read that file — please try again.'; };
+  reader.readAsText(file);
 }
 
 let S = {
@@ -796,7 +802,7 @@ async function openTask(id) {
   try { parsedContent = JSON.parse(task.content||'{}'); } catch(e){}
   if(task.skill==='writing') {
     renderWritingTask(task, sub, area);
-  } else if(task.task_type==='html_embed' && (task.html_url || parsedContent.html_url)) {
+  } else if(task.task_type==='html_embed' && parsedContent.html) {
     renderEmbeddedHtmlTask(task, sub, area);
   } else if(task.skill==='reading') {
     renderReadingTask(task, sub, area);
@@ -806,24 +812,31 @@ async function openTask(id) {
 }
 
 // ── EMBEDDED HTML TASK (uploaded self-contained Reading/Listening page) ──
-// The uploaded HTML is expected to manage its own questions/answers and,
+// The HTML is stored directly in the task's content JSON and injected via
+// iframe srcdoc — not loaded from a URL. (Supabase Storage/Edge Functions
+// force .html files to be served as text/plain rather than rendered, by
+// design, so the file is never uploaded anywhere; it's embedded inline.)
+// The uploaded page is expected to manage its own questions/answers and,
 // when the student finishes, call:  window.parent.postMessage({type:'ielts-task-complete', score, total}, '*')
 // from inside the iframe. We listen for that message and record a submission.
 function renderEmbeddedHtmlTask(task, sub, area){
   let data={}; try{data=JSON.parse(task.content||'{}');}catch(e){}
-  const url = task.html_url || data.html_url;
+  const html = data.html || '';
   const instructions = data.instructions || '';
   const isSubmitted = !!sub;
 
   area.innerHTML = `<div class="reading-task-card">
     ${instructions?`<div style="padding:16px 24px;background:#f0fdf4;border-bottom:1px solid var(--border);color:#166534;font-size:13px;">📋 ${instructions}</div>`:''}
     <div style="padding:0;background:#fff">
-      <iframe id="embed-iframe" src="${url}" style="width:100%;height:70vh;border:none;display:block" sandbox="allow-scripts allow-forms allow-same-origin allow-popups"></iframe>
+      <iframe id="embed-iframe" style="width:100%;height:70vh;border:none;display:block" sandbox="allow-scripts allow-forms allow-popups"></iframe>
     </div>
     ${isSubmitted?`<div class="result-bar"><div class="result-score">Score: <span class="correct">${sub.score!=null?sub.score:'—'}</span>${sub.total!=null?`<span class="total">/${sub.total}</span>`:''} </div><span class="submitted-badge">✓ Submitted</span></div>`
       :`<div class="task-footer"><div style="font-size:12px;color:var(--muted)">This task will be marked complete automatically when you finish it above.</div>
          <button class="btn btn-outline" onclick="markEmbeddedComplete()">Mark as complete manually</button></div>`}
   </div>`;
+  // Set srcdoc via the DOM property rather than an HTML attribute string —
+  // avoids any manual escaping and handles quotes/special characters safely.
+  document.getElementById('embed-iframe').srcdoc = html;
 
   // Listen once for a completion signal from the embedded page.
   if(!isSubmitted){
@@ -1144,21 +1157,46 @@ function backToLesson(){ showView('view-lesson'); }
 
 // ── ADMIN ──
 async function loadAdminData() {
-  try {
-    const [groups,students,lessons,tasks,subs] = await Promise.all([
-      get('groups?order=name.asc'),
-      get('students?select=*,groups(name)&order=name.asc'),
-      get('lessons?order=order.asc'),
-      get('tasks?order=order.asc'),
-      get('submissions?select=*,students(name,student_code),tasks(title,skill,lessons(title))&order=submitted_at.desc')
-    ]);
-    S.groups=groups; S.students=students; S.adminLessons=lessons; S.adminTasks=tasks; S.adminSubs=subs;
-    renderAdminStats(); renderGroupsTable(); renderStudentsTable(); renderLessonsTable(); renderTasksTable(); renderSubmissionsTable();
-  } catch(e) {
-    toast('Session expired or access denied — please log in again','error');
+  // Each section loads independently — a broken/unexpected schema on one
+  // table (e.g. submissions) should never block the others from showing,
+  // and should never be confused with an actual login/session failure.
+  const results = await Promise.allSettled([
+    get('groups?order=name.asc'),
+    get('students?select=*,groups(name)&order=name.asc'),
+    get('lessons?order=order.asc'),
+    get('tasks?order=order.asc'),
+    get('submissions?select=*,students(name,student_code),tasks(title,skill,lessons(title))&order=submitted_at.desc')
+  ]);
+
+  const [groupsR, studentsR, lessonsR, tasksR, subsR] = results;
+  const isAuthError = (r) => r.status==='rejected' && /401|403|jwt|auth/i.test(r.reason?.message||'');
+
+  // Only bounce back to login if the lessons/groups query itself failed
+  // for an auth reason — i.e. we're not really logged in / token expired.
+  if (groupsR.status==='rejected' && isAuthError(groupsR)) {
+    toast('Session expired — please log in again','error');
     ADMIN_TOKEN=null; sessionStorage.removeItem('admin_token'); sessionStorage.removeItem('admin_refresh');
     showScreen('screen-admin-login');
+    return;
   }
+
+  S.groups = groupsR.status==='fulfilled' ? groupsR.value : [];
+  S.students = studentsR.status==='fulfilled' ? studentsR.value : [];
+  S.adminLessons = lessonsR.status==='fulfilled' ? lessonsR.value : [];
+  S.adminTasks = tasksR.status==='fulfilled' ? tasksR.value : [];
+  S.adminSubs = subsR.status==='fulfilled' ? subsR.value : [];
+
+  // Surface any individual failures so they're visible instead of silent —
+  // but only once per load, and without logging the admin out for them.
+  results.forEach((r,i) => {
+    if (r.status==='rejected') {
+      const labels=['groups','students','lessons','tasks','submissions'];
+      console.error(`Failed to load ${labels[i]}:`, r.reason?.message);
+      toast(`Couldn't load ${labels[i]}: ${r.reason?.message||'unknown error'}`,'error');
+    }
+  });
+
+  renderAdminStats(); renderGroupsTable(); renderStudentsTable(); renderLessonsTable(); renderTasksTable(); renderSubmissionsTable();
 }
 
 function renderAdminStats(){
@@ -1273,15 +1311,14 @@ function onTaskSkillChange(){
 function renderTaskSkillFields(skill, t){
   const el=document.getElementById('task-skill-fields');
   if(skill==='reading' || skill==='listening'){
-    const existingUrl = t?.html_url || '';
     let existingData={}; if(t) try{existingData=JSON.parse(t.content||'{}');}catch(e){}
+    const hasExisting = !!existingData.html;
     el.innerHTML = `
       <div class="form-group">
         <label>${skill==='reading'?'📖 Reading':'🎧 Listening'} HTML file</label>
-        <input type="file" id="m-htmlfile" accept=".html,text/html"/>
-        <div class="hint-text" id="m-htmlfile-status">${existingUrl?`Currently set: <a href="${existingUrl}" target="_blank">view uploaded file</a>. Choose a new file to replace it.`:'Upload a self-contained HTML page with the task and its own questions/answers built in.'}</div>
-        <input type="hidden" id="m-htmlurl" value="${existingUrl}"/>
-        <input type="hidden" id="m-htmlpath" value="${t?.html_path||''}"/>
+        <input type="file" id="m-htmlfile" accept=".html,text/html" onchange="onHtmlFileSelected(this)"/>
+        <div class="hint-text" id="m-htmlfile-status">${hasExisting?`A file is currently saved for this task (${Math.round((existingData.html.length||0)/1024)} KB). Choose a new file to replace it, or leave as-is to keep it.`:'Upload a self-contained HTML page with the task and its own questions/answers built in.'}</div>
+        <textarea id="m-htmlcontent" style="display:none">${(existingData.html||'').replace(/<\/textarea>/g,'&lt;/textarea&gt;')}</textarea>
       </div>
       <div class="form-group"><label>Instructions shown above the task (optional)</label>
         <input id="m-instructions" value="${existingData.instructions||''}" placeholder="e.g. Read the passage, then answer inside the embedded task."/>
@@ -1327,7 +1364,11 @@ function openModal(type, editId=null){
   } else if(type==='lesson'){
     const l=editId?S.adminLessons.find(x=>x.id===editId):null;
     title.textContent=editId?'Edit Lesson':'Add Lesson';
+    const lSkill = l?.skill || 'reading';
     body.innerHTML=`<div class="form-group"><label>Title</label><input id="m-title" value="${l?.title||''}"/></div>
+      <div class="form-group"><label>Skill</label><select id="m-lesson-skill">
+        ${['reading','listening','writing','vocabulary'].map(sk=>`<option value="${sk}" ${lSkill===sk?'selected':''}>${sk}</option>`).join('')}
+      </select></div>
       <div class="form-group"><label>Description</label><input id="m-desc" value="${l?.description||''}"/></div>
       <div class="form-group"><label>Order (number)</label><input type="number" id="m-order" value="${l?.order||1}"/></div>
       <div class="form-group" style="display:flex;align-items:center;gap:8px">
@@ -1368,8 +1409,9 @@ async function saveModal(){
     } else if(type==='lesson'){
       const title=document.getElementById('m-title').value.trim(), desc=document.getElementById('m-desc').value.trim(), order=parseInt(document.getElementById('m-order').value)||1;
       const published=document.getElementById('m-published').checked;
+      const skill=document.getElementById('m-lesson-skill').value;
       if(!title) return toast('Title required','error');
-      result = S.editId ? await patch(`lessons?id=eq.${S.editId}`,{title,description:desc,order,published}) : await post('lessons',{title,description:desc,order,published});
+      result = S.editId ? await patch(`lessons?id=eq.${S.editId}`,{title,description:desc,order,published,skill}) : await post('lessons',{title,description:desc,order,published,skill});
     } else if(type==='task'){
       const title=document.getElementById('m-title').value.trim(), lesson_id=document.getElementById('m-lesson').value, skill=document.getElementById('m-skill').value;
       const order=parseInt(document.getElementById('m-order').value)||1;
@@ -1378,21 +1420,10 @@ async function saveModal(){
       let payload = { title, lesson_id, skill, order };
 
       if(skill==='reading' || skill==='listening'){
-        const fileInput=document.getElementById('m-htmlfile');
-        let html_url=document.getElementById('m-htmlurl').value||null;
-        let html_path=document.getElementById('m-htmlpath').value||null;
-        if(fileInput && fileInput.files && fileInput.files[0]){
-          const file=fileInput.files[0];
-          const path=`tasks/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9_.-]/g,'_')}`;
-          toast('Uploading file…','');
-          html_url = await storageUpload('task-html', path, file);
-          html_path = path;
-        }
-        if(!html_url) return toast('Please upload an HTML file for this task','error');
+        const html = document.getElementById('m-htmlcontent').value;
+        if(!html) return toast('Please choose an HTML file for this task','error');
         payload.task_type = 'html_embed';
-        payload.html_url = html_url;
-        payload.html_path = html_path;
-        payload.content = JSON.stringify({ html_url, instructions: document.getElementById('m-instructions').value.trim() });
+        payload.content = JSON.stringify({ html, instructions: document.getElementById('m-instructions').value.trim() });
       } else if(skill==='writing'){
         const prompt=document.getElementById('m-prompt').value.trim();
         const min_words=parseInt(document.getElementById('m-minwords').value)||150;
