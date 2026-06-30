@@ -294,7 +294,7 @@ function renderReadingPanel(area){
   const isSubmitted = !!S.currentSubmission;
   const isFullTest = passages.length>1;
 
-  const tabsHtml = isFullTest ? `<div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+  const tabsHtml = isFullTest ? `<div class="passage-tabs">
     ${passages.map((p,i)=>`<button class="btn ${i===pIdx?'btn-primary':'btn-outline'} btn-sm" onclick="switchReadingPassage(${i})">${p.title||('Passage '+(i+1))}</button>`).join('')}
   </div>` : '';
 
@@ -320,7 +320,7 @@ function renderReadingPanel(area){
 
   const navHtml = `<div class="task-footer" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
     <div>${pIdx>0?`<button class="btn btn-outline" onclick="switchReadingPassage(${pIdx-1})">‹ Previous Passage</button>`:''}</div>
-    <div style="display:flex;gap:10px">
+    <div class="footer-btn-group">
       ${pIdx<passages.length-1?`<button class="btn btn-outline" onclick="switchReadingPassage(${pIdx+1})">Next Passage ›</button>`:''}
       ${!isSubmitted && S.allQuestions.length>0?`<button class="btn btn-success" onclick="submitReadingTask()">Submit ${isFullTest?'All Answers':'Answers'}</button>`:''}
     </div>
