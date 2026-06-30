@@ -49,7 +49,8 @@
 
 <script src="shared.js"></script>
 <script>
-let S = { student:null, task:null, lesson:null, currentSubmission:null };
+let S = { student:null, task:null, lesson:null, currentSubmission:null,
+  passages:[], allQuestions:[], readingAnswers:{}, savedAnswers:{}, activePassageIdx:0 };
 
 function goBackToLesson(){
   const lessonId = S.task ? S.task.lesson_id : '';
@@ -57,241 +58,295 @@ function goBackToLesson(){
 }
 
 // ── READING ──
-function renderReadingTask(task, sub, area) {
-  // Parse task content. New tasks use passage_html (rendered inline);
-  // passage_url is kept as a fallback for any tasks created before this.
+// Normalizes both task shapes into one: a `passages` array. A classic
+// single-passage task (task_type 'reading_mixed') becomes a 1-element
+// passages array; a full test (task_type 'reading_full_test') keeps its
+// real passages array. Either way each question gets a global index (qi)
+// that's continuous across passages — this is what's used as the key in
+// the answers object, so grading/storage/admin review all stay flat and
+// the existing gradeQuestions() helper needs no changes.
+function normalizeReadingData(task){
   let data = {};
-  try { data = JSON.parse(task.content); } catch(e) { data = { questions: [] }; }
+  try { data = JSON.parse(task.content); } catch(e) { data = {}; }
+  let passages = (task.task_type==='reading_full_test' && Array.isArray(data.passages) && data.passages.length)
+    ? data.passages
+    : [{ title:null, passage_html:data.passage_html||null, passage_url:data.passage_url||null, questions:data.questions||[] }];
 
-  const passageHtml = data.passage_html || null;
-  const passageUrl = data.passage_url || null;
-  const questions = data.questions || [];
+  let offset = 0;
+  const allQuestions = [];
+  passages.forEach(p=>{
+    p.questions = p.questions||[];
+    p._offset = offset;
+    p.questions.forEach(q=>allQuestions.push(q));
+    offset += p.questions.length;
+  });
+  return { passages, allQuestions };
+}
 
-  // parse saved answers
-  let savedAnswers = {};
-  if(sub && sub.answer) { try { savedAnswers = JSON.parse(sub.answer); } catch(e){} }
-  const isSubmitted = !!sub;
+function getAnswer(qi){ return S.currentSubmission ? S.savedAnswers[qi] : S.readingAnswers[qi]; }
+function setAnswer(qi, val){ if(S.currentSubmission) return; S.readingAnswers[qi]=val; }
+function setAnswerItem(qi, ii, val){
+  if(S.currentSubmission) return;
+  if(!S.readingAnswers[qi] || typeof S.readingAnswers[qi]!=='object') S.readingAnswers[qi]={};
+  S.readingAnswers[qi][ii]=val;
+}
+
+function renderReadingTask(task, sub, area) {
+  const { passages, allQuestions } = normalizeReadingData(task);
+  S.task = task;
+  S.passages = passages;
+  S.allQuestions = allQuestions;
+  S.currentSubmission = sub;
+  S.savedAnswers = {};
+  if(sub && sub.answer) { try { S.savedAnswers = JSON.parse(sub.answer); } catch(e){} }
+  S.readingAnswers = {};
+  S.activePassageIdx = 0;
+  renderReadingPanel(area);
+}
+
+function switchReadingPassage(idx){
+  const area = document.getElementById('view-task-inner');
+  S.activePassageIdx = idx;
+  renderReadingPanel(area);
+}
+
+// Builds the markup for one question. `qi` is the GLOBAL question index
+// (continuous across all passages), used both for the visible question
+// number and as the key into the answers object.
+function buildQuestionHtml(q, qi){
+  const isSubmitted = !!S.currentSubmission;
+  const saved = getAnswer(qi);
+
+  if(q.type==='gap_fill' || q.type==='short_answer') {
+    const val = saved!==undefined ? saved : '';
+    return `<div class="q-item">
+      <div class="q-num">${qi+1}</div>
+      <div style="flex:1">
+        <div class="q-label" style="margin-bottom:6px">${q.question||''}</div>
+        <input class="q-input${isSubmitted?(String(val).toLowerCase().trim()===(q.answer||'').toLowerCase().trim()?' correct':' wrong'):''}"
+          id="qa_${qi}" value="${val}" ${isSubmitted?'disabled':''} placeholder="Your answer"
+          oninput="setAnswer(${qi},this.value.trim())"/>
+        ${isSubmitted?`<div style="font-size:12px;color:var(--muted);margin-top:4px">Answer: <strong>${q.answer||''}</strong></div>`:''}
+      </div>
+    </div>`;
+  }
+  if(q.type==='tfng' || q.type==='ynng') {
+    const opts = q.type==='ynng' ? ['Yes','No','Not Given'] : ['True','False','Not Given'];
+    return `<div class="q-item" style="flex-direction:column;align-items:flex-start;gap:8px">
+      <div style="display:flex;gap:10px;align-items:flex-start">
+        <div class="q-num">${qi+1}</div>
+        <div class="q-label">${q.question||''}</div>
+      </div>
+      <div class="tfng-group" style="margin-left:34px">
+        ${opts.map(o=>{
+          const isSelected = saved===o;
+          const correct = q.answer||'';
+          let cls = isSelected ? 'selected' : '';
+          if(isSubmitted && isSelected) cls = saved===correct?'correct':'wrong';
+          if(isSubmitted && o===correct && !isSelected) cls='correct';
+          return `<button class="tfng-btn ${cls}" id="qa_${qi}_${o}" ${isSubmitted?'disabled':''} onclick="selectTFNG(${qi},'${o}')">${o}</button>`;
+        }).join('')}
+      </div>
+      ${isSubmitted?`<div style="font-size:12px;color:var(--muted);margin-left:34px">Answer: <strong>${q.answer||''}</strong></div>`:''}
+    </div>`;
+  }
+  if(q.type==='mcq') {
+    const opts = q.options||[];
+    return `<div style="margin-bottom:16px">
+      <div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:8px">
+        <div class="q-num">${qi+1}</div>
+        <div class="q-label">${q.question||''}</div>
+      </div>
+      <div style="margin-left:34px">
+        ${opts.map((o,oi)=>{
+          const letter=String.fromCharCode(65+oi);
+          let cls='';
+          if(isSubmitted){ if(saved===letter) cls=saved===q.answer?'correct':'wrong'; if(letter===q.answer) cls='correct'; }
+          else if(saved===letter) cls='selected';
+          return `<div class="mcq-option ${cls}" id="qa_${qi}_${letter}" onclick="selectMCQ(${qi},'${letter}')" ${isSubmitted?'style="cursor:default"':''}>
+            <div class="mcq-letter">${letter}</div>
+            <div class="mcq-text">${o}</div>
+          </div>`;
+        }).join('')}
+      </div>
+      ${isSubmitted?`<div style="font-size:12px;color:var(--muted);margin-left:34px;margin-top:4px">Answer: <strong>${q.answer||''}</strong></div>`:''}
+    </div>`;
+  }
+  if(q.type==='matching') {
+    const items = q.items||[];
+    const matchOptions = q.matchOptions||[];
+    const savedMatch = saved && typeof saved==='object' ? saved : {};
+    return `<div class="q-item" style="flex-direction:column;align-items:flex-start;gap:10px">
+      <div style="display:flex;gap:10px;align-items:flex-start">
+        <div class="q-num">${qi+1}</div>
+        <div class="q-label">${q.question||''}</div>
+      </div>
+      <div style="margin-left:34px;width:100%">
+        <div class="hint-text" style="margin-bottom:8px">Options: ${matchOptions.map((o,oi)=>`<strong>${oi+1}.</strong> ${o}`).join('&nbsp;&nbsp;')}</div>
+        ${items.map((it,ii)=>{
+          const itemSaved = savedMatch[ii]||'';
+          const isCorrect = itemSaved===it.answer;
+          return `<div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;flex-wrap:wrap">
+            <span style="min-width:140px;font-size:13px">${it.label}</span>
+            <select id="qa_${qi}_${ii}" ${isSubmitted?'disabled':''} onchange="selectMatching(${qi},${ii},this.value)"
+              class="${isSubmitted?(isCorrect?'q-input correct':'q-input wrong'):'q-input'}" style="flex:1;min-width:120px">
+              <option value="">Choose…</option>
+              ${matchOptions.map(o=>`<option value="${o.replace(/"/g,'&quot;')}" ${itemSaved===o?'selected':''}>${o}</option>`).join('')}
+            </select>
+            ${isSubmitted?`<span style="font-size:12px;color:var(--muted)">✓ <strong>${it.answer}</strong></span>`:''}
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+  }
+  if(q.type==='sentence_endings') {
+    const items = q.items||[];
+    const matchOptions = q.matchOptions||[];
+    const savedMatch = saved && typeof saved==='object' ? saved : {};
+    const endingsHtml = matchOptions.map(function(o,oi){
+      return '<span style="display:inline-block;margin:3px 8px 3px 0"><strong>'+String.fromCharCode(65+oi)+'.</strong> '+o+'</span>';
+    }).join('');
+    const itemsHtml = items.map(function(it,ii){
+      const itemSaved = savedMatch[ii]||'';
+      const isCorrect = itemSaved===it.answer;
+      const optHtml = matchOptions.map(function(o,oi){
+        const l=String.fromCharCode(65+oi);
+        return '<option value="'+l+'" '+(itemSaved===l?'selected':'')+'>'+l+'</option>';
+      }).join('');
+      const ansHint = isSubmitted ? '<span style="font-size:12px;color:var(--muted)">&#10003; <strong>'+it.answer+'</strong></span>' : '';
+      return '<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap">'+
+        '<span style="font-size:13px;flex:1;min-width:160px"><strong>'+(ii+1)+'.</strong> '+it.label+'</span>'+
+        '<select id="qa_'+qi+'_'+ii+'" '+(isSubmitted?'disabled':'')+' onchange="selectMatching('+qi+','+ii+',this.value)"'+
+        ' class="'+(isSubmitted?(isCorrect?'q-input correct':'q-input wrong'):'q-input')+'" style="min-width:60px">'+
+        '<option value="">—</option>'+optHtml+'</select>'+ansHint+'</div>';
+    }).join('');
+    const instrText = q.question || ('Match the sentence beginnings (1\u2013'+items.length+') with the correct endings (A\u2013'+String.fromCharCode(64+matchOptions.length)+').');
+    return '<div class="q-item" style="flex-direction:column;align-items:flex-start;gap:10px">'+
+      '<div style="display:flex;gap:10px;align-items:flex-start">'+
+      '<div class="q-num">'+(qi+1)+'</div>'+
+      '<div class="q-label" style="font-weight:600">'+instrText+'</div></div>'+
+      '<div style="margin-left:34px;width:100%">'+
+      '<div style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin-bottom:10px;font-size:13px">'+
+      '<strong>Endings:</strong><br>'+endingsHtml+'</div>'+
+      itemsHtml+'</div></div>';
+  }
+  if(q.type==='diagram_label') {
+    const items = q.items||[];
+    const savedMatch = saved && typeof saved==='object' ? saved : {};
+    const imgHtml = q.image_url
+      ? '<img src="'+q.image_url+'" style="max-width:100%;border-radius:8px;margin-bottom:10px;display:block"/>'
+      : '<div style="background:#f8fafc;border:2px dashed var(--border);border-radius:8px;padding:20px;text-align:center;color:var(--muted);font-size:13px;margin-bottom:10px">&#128202; Diagram image (add via image URL in question)</div>';
+    const labelItemsHtml = items.map(function(it,ii){
+      const itemSaved = savedMatch[ii]||'';
+      const isCorrect = (itemSaved||'').toLowerCase().trim()===(it.answer||'').toLowerCase().trim();
+      const ansHint = isSubmitted ? '<span style="font-size:12px;color:var(--muted)">&#10003; <strong>'+it.answer+'</strong></span>' : '';
+      return '<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap">'+
+        '<span style="font-size:13px;min-width:60px"><strong>'+(it.label||String(ii+1))+'</strong></span>'+
+        '<input id="qa_'+qi+'_'+ii+'" value="'+itemSaved+'" '+(isSubmitted?'disabled':'')+' placeholder="Write your answer"'+
+        ' class="q-input'+(isSubmitted?(isCorrect?' correct':' wrong'):'')+'" style="flex:1;min-width:120px"'+
+        ' oninput="selectDiagramLabel('+qi+','+ii+',this.value.trim())"/>'+ansHint+'</div>';
+    }).join('');
+    return '<div class="q-item" style="flex-direction:column;align-items:flex-start;gap:10px">'+
+      '<div style="display:flex;gap:10px;align-items:flex-start">'+
+      '<div class="q-num">'+(qi+1)+'</div>'+
+      '<div class="q-label">'+(q.question||'Label the diagram. Write NO MORE THAN TWO WORDS for each answer.')+'</div></div>'+
+      '<div style="margin-left:34px;width:100%">'+imgHtml+labelItemsHtml+'</div></div>';
+  }
+  if(q.type==='table_completion' || q.type==='summary_completion' || q.type==='flow_chart' || q.type==='note_completion') {
+    // Rendered as a structured gap-fill with context text containing {N} placeholders
+    const contextHtml = (q.context||'').replace(/\{(\d+)\}/g, function(m,n){
+      const idx = parseInt(n)-1;
+      const items = q.items||[];
+      const itemSaved = (saved && typeof saved==='object') ? (saved[idx]||'') : '';
+      const correctAns = items[idx]?.answer||'';
+      const isCorrect = (itemSaved||'').toLowerCase().trim()===correctAns.toLowerCase().trim();
+      const answerHint = isSubmitted ? '<span style="font-size:11px;color:var(--muted)">['+correctAns+']</span>' : '';
+      return '<input id="qa_'+qi+'_'+idx+'" value="'+itemSaved+'" '+(isSubmitted?'disabled':'')+
+        ' class="q-input'+(isSubmitted?(isCorrect?' correct':' wrong'):'')+'"'+
+        ' style="display:inline-block;width:120px;padding:4px 8px;margin:0 4px;vertical-align:middle"'+
+        ' placeholder="'+n+'"'+
+        ' oninput="selectTableItem('+qi+','+idx+',this.value.trim())"/>'+answerHint;
+    });
+    const typeLabels = {table_completion:'Table Completion',summary_completion:'Summary Completion',flow_chart:'Flow-Chart Completion',note_completion:'Note Completion'};
+    const typeLabel = typeLabels[q.type]||q.type;
+    return `<div class="q-item" style="flex-direction:column;align-items:flex-start;gap:8px">
+      <div style="display:flex;gap:10px;align-items:flex-start">
+        <div class="q-num">${qi+1}</div>
+        <div>
+          <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">${typeLabel}</div>
+          <div class="q-label">${q.question||('Complete the '+typeLabel+' below. Write NO MORE THAN TWO WORDS.')}</div>
+        </div>
+      </div>
+      <div style="margin-left:34px;width:100%;background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:14px;font-size:14px;line-height:2.2">
+        ${contextHtml||'<span style="color:var(--muted)">No context text set yet. Admin can add it with {1}, {2} placeholders.</span>'}
+      </div>
+    </div>`;
+  }
+  return '';
+}
+
+function renderReadingPanel(area){
+  const task = S.task;
+  const passages = S.passages;
+  const pIdx = S.activePassageIdx;
+  const passage = passages[pIdx];
+  const offset = passage._offset;
+  const isSubmitted = !!S.currentSubmission;
+  const isFullTest = passages.length>1;
+
+  const tabsHtml = isFullTest ? `<div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+    ${passages.map((p,i)=>`<button class="btn ${i===pIdx?'btn-primary':'btn-outline'} btn-sm" onclick="switchReadingPassage(${i})">${p.title||('Passage '+(i+1))}</button>`).join('')}
+  </div>` : '';
 
   let qHtml = '';
-  questions.forEach((q,qi)=>{
-    const saved = savedAnswers[qi] !== undefined ? savedAnswers[qi] : '';
-    if(q.type==='gap_fill') {
-      qHtml += `<div class="q-item">
-        <div class="q-num">${qi+1}</div>
-        <div style="flex:1">
-          <div class="q-label" style="margin-bottom:6px">${q.question||''}</div>
-          <input class="q-input${isSubmitted?(saved.toLowerCase().trim()===(q.answer||'').toLowerCase().trim()?' correct':' wrong'):''}"
-            id="qa_${qi}" value="${saved}" ${isSubmitted?'disabled':''} placeholder="Your answer"/>
-          ${isSubmitted?`<div style="font-size:12px;color:var(--muted);margin-top:4px">Answer: <strong>${q.answer||''}</strong></div>`:''}
-        </div>
-      </div>`;
-    } else if(q.type==='tfng' || q.type==='ynng') {
-      const opts = q.type==='ynng' ? ['Yes','No','Not Given'] : ['True','False','Not Given'];
-      qHtml += `<div class="q-item" style="flex-direction:column;align-items:flex-start;gap:8px">
-        <div style="display:flex;gap:10px;align-items:flex-start">
-          <div class="q-num">${qi+1}</div>
-          <div class="q-label">${q.question||''}</div>
-        </div>
-        <div class="tfng-group" style="margin-left:34px">
-          ${opts.map(o=>{
-            const isSelected = saved===o;
-            const correct = q.answer||'';
-            let cls = isSelected ? 'selected' : '';
-            if(isSubmitted && isSelected) cls = saved===correct?'correct':'wrong';
-            if(isSubmitted && o===correct && !isSelected) cls='correct';
-            return `<button class="tfng-btn ${cls}" id="qa_${qi}_${o}" ${isSubmitted?'disabled':''} onclick="selectTFNG(${qi},'${o}')">${o}</button>`;
-          }).join('')}
-        </div>
-        ${isSubmitted?`<div style="font-size:12px;color:var(--muted);margin-left:34px">Answer: <strong>${q.answer||''}</strong></div>`:''}
-      </div>`;
-    } else if(q.type==='mcq') {
-      const opts = q.options||[];
-      qHtml += `<div style="margin-bottom:16px">
-        <div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:8px">
-          <div class="q-num">${qi+1}</div>
-          <div class="q-label">${q.question||''}</div>
-        </div>
-        <div style="margin-left:34px">
-          ${opts.map((o,oi)=>{
-            const letter=String.fromCharCode(65+oi);
-            let cls='';
-            if(isSubmitted){ if(saved===letter) cls=saved===q.answer?'correct':'wrong'; if(letter===q.answer) cls='correct'; }
-            else if(saved===letter) cls='selected';
-            return `<div class="mcq-option ${cls}" id="qa_${qi}_${letter}" onclick="selectMCQ(${qi},'${letter}')" ${isSubmitted?'style="cursor:default"':''}>
-              <div class="mcq-letter">${letter}</div>
-              <div class="mcq-text">${o}</div>
-            </div>`;
-          }).join('')}
-        </div>
-        ${isSubmitted?`<div style="font-size:12px;color:var(--muted);margin-left:34px;margin-top:4px">Answer: <strong>${q.answer||''}</strong></div>`:''}
-      </div>`;
-    } else if(q.type==='short_answer') {
-      qHtml += `<div class="q-item">
-        <div class="q-num">${qi+1}</div>
-        <div style="flex:1">
-          <div class="q-label" style="margin-bottom:6px">${q.question||''}</div>
-          <input class="q-input${isSubmitted?(saved.toLowerCase().trim()===(q.answer||'').toLowerCase().trim()?' correct':' wrong'):''}"
-            id="qa_${qi}" value="${saved}" ${isSubmitted?'disabled':''} placeholder="Your answer"/>
-          ${isSubmitted?`<div style="font-size:12px;color:var(--muted);margin-top:4px">Answer: <strong>${q.answer||''}</strong></div>`:''}
-        </div>
-      </div>`;
-    } else if(q.type==='matching') {
-      const items = q.items||[];
-      const matchOptions = q.matchOptions||[];
-      const savedMatch = saved && typeof saved==='object' ? saved : {};
-      qHtml += `<div class="q-item" style="flex-direction:column;align-items:flex-start;gap:10px">
-        <div style="display:flex;gap:10px;align-items:flex-start">
-          <div class="q-num">${qi+1}</div>
-          <div class="q-label">${q.question||''}</div>
-        </div>
-        <div style="margin-left:34px;width:100%">
-          <div class="hint-text" style="margin-bottom:8px">Options: ${matchOptions.map((o,oi)=>`<strong>${oi+1}.</strong> ${o}`).join('&nbsp;&nbsp;')}</div>
-          ${items.map((it,ii)=>{
-            const itemSaved = savedMatch[ii]||'';
-            const isCorrect = itemSaved===it.answer;
-            return `<div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;flex-wrap:wrap">
-              <span style="min-width:140px;font-size:13px">${it.label}</span>
-              <select id="qa_${qi}_${ii}" ${isSubmitted?'disabled':''} onchange="selectMatching(${qi},${ii},this.value)"
-                class="${isSubmitted?(isCorrect?'q-input correct':'q-input wrong'):'q-input'}" style="flex:1;min-width:120px">
-                <option value="">Choose…</option>
-                ${matchOptions.map(o=>`<option value="${o.replace(/"/g,'&quot;')}" ${itemSaved===o?'selected':''}>${o}</option>`).join('')}
-              </select>
-              ${isSubmitted?`<span style="font-size:12px;color:var(--muted)">✓ <strong>${it.answer}</strong></span>`:''}
-            </div>`;
-          }).join('')}
-        </div>
-      </div>`;
-    } else if(q.type==='sentence_endings') {
-      const items = q.items||[];
-      const matchOptions = q.matchOptions||[];
-      const savedMatch = saved && typeof saved==='object' ? saved : {};
-      const endingsHtml = matchOptions.map(function(o,oi){
-        return '<span style="display:inline-block;margin:3px 8px 3px 0"><strong>'+String.fromCharCode(65+oi)+'.</strong> '+o+'</span>';
-      }).join('');
-      const itemsHtml = items.map(function(it,ii){
-        const itemSaved = savedMatch[ii]||'';
-        const isCorrect = itemSaved===it.answer;
-        const optHtml = matchOptions.map(function(o,oi){
-          const l=String.fromCharCode(65+oi);
-          return '<option value="'+l+'" '+(itemSaved===l?'selected':'')+'>'+l+'</option>';
-        }).join('');
-        const ansHint = isSubmitted ? '<span style="font-size:12px;color:var(--muted)">&#10003; <strong>'+it.answer+'</strong></span>' : '';
-        return '<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap">'+
-          '<span style="font-size:13px;flex:1;min-width:160px"><strong>'+(ii+1)+'.</strong> '+it.label+'</span>'+
-          '<select id="qa_'+qi+'_'+ii+'" '+(isSubmitted?'disabled':'')+' onchange="selectMatching('+qi+','+ii+',this.value)"'+
-          ' class="'+(isSubmitted?(isCorrect?'q-input correct':'q-input wrong'):'q-input')+'" style="min-width:60px">'+
-          '<option value="">—</option>'+optHtml+'</select>'+ansHint+'</div>';
-      }).join('');
-      const instrText = q.question || ('Match the sentence beginnings (1\u2013'+items.length+') with the correct endings (A\u2013'+String.fromCharCode(64+matchOptions.length)+').');
-      qHtml += '<div class="q-item" style="flex-direction:column;align-items:flex-start;gap:10px">'+
-        '<div style="display:flex;gap:10px;align-items:flex-start">'+
-        '<div class="q-num">'+(qi+1)+'</div>'+
-        '<div class="q-label" style="font-weight:600">'+instrText+'</div></div>'+
-        '<div style="margin-left:34px;width:100%">'+
-        '<div style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin-bottom:10px;font-size:13px">'+
-        '<strong>Endings:</strong><br>'+endingsHtml+'</div>'+
-        itemsHtml+'</div></div>';
-    } else if(q.type==='diagram_label') {
-      const items = q.items||[];
-      const savedMatch = saved && typeof saved==='object' ? saved : {};
-      const imgHtml = q.image_url
-        ? '<img src="'+q.image_url+'" style="max-width:100%;border-radius:8px;margin-bottom:10px;display:block"/>'
-        : '<div style="background:#f8fafc;border:2px dashed var(--border);border-radius:8px;padding:20px;text-align:center;color:var(--muted);font-size:13px;margin-bottom:10px">&#128202; Diagram image (add via image URL in question)</div>';
-      const labelItemsHtml = items.map(function(it,ii){
-        const itemSaved = savedMatch[ii]||'';
-        const isCorrect = (itemSaved||'').toLowerCase().trim()===(it.answer||'').toLowerCase().trim();
-        const ansHint = isSubmitted ? '<span style="font-size:12px;color:var(--muted)">&#10003; <strong>'+it.answer+'</strong></span>' : '';
-        return '<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap">'+
-          '<span style="font-size:13px;min-width:60px"><strong>'+(it.label||String(ii+1))+'</strong></span>'+
-          '<input id="qa_'+qi+'_'+ii+'" value="'+itemSaved+'" '+(isSubmitted?'disabled':'')+' placeholder="Write your answer"'+
-          ' class="q-input'+(isSubmitted?(isCorrect?' correct':' wrong'):'')+'" style="flex:1;min-width:120px"'+
-          ' onchange="selectDiagramLabel('+qi+','+ii+',this.value)"/>'+ansHint+'</div>';
-      }).join('');
-      qHtml += '<div class="q-item" style="flex-direction:column;align-items:flex-start;gap:10px">'+
-        '<div style="display:flex;gap:10px;align-items:flex-start">'+
-        '<div class="q-num">'+(qi+1)+'</div>'+
-        '<div class="q-label">'+(q.question||'Label the diagram. Write NO MORE THAN TWO WORDS for each answer.')+'</div></div>'+
-        '<div style="margin-left:34px;width:100%">'+imgHtml+labelItemsHtml+'</div></div>';
-    } else if(q.type==='table_completion' || q.type==='summary_completion' || q.type==='flow_chart' || q.type==='note_completion') {
-      // Rendered as a structured gap-fill with context text containing {N} placeholders
-      const contextHtml = (q.context||'').replace(/\{(\d+)\}/g, function(m,n){
-        const idx = parseInt(n)-1;
-        const items = q.items||[];
-        const itemSaved = (saved && typeof saved==='object') ? (saved[idx]||'') : '';
-        const correctAns = items[idx]?.answer||'';
-        const isCorrect = (itemSaved||'').toLowerCase().trim()===correctAns.toLowerCase().trim();
-        const answerHint = isSubmitted ? '<span style="font-size:11px;color:var(--muted)">['+correctAns+']</span>' : '';
-        return '<input id="qa_'+qi+'_'+idx+'" value="'+itemSaved+'" '+(isSubmitted?'disabled':'')+
-          ' class="q-input'+(isSubmitted?(isCorrect?' correct':' wrong'):'')+'"'+
-          ' style="display:inline-block;width:120px;padding:4px 8px;margin:0 4px;vertical-align:middle"'+
-          ' placeholder="'+n+'"'+
-          ' onchange="selectTableItem('+qi+','+idx+',this.value)"/>'+answerHint;
-      });
-      const typeLabels = {table_completion:'Table Completion',summary_completion:'Summary Completion',flow_chart:'Flow-Chart Completion',note_completion:'Note Completion'};
-      const typeLabel = typeLabels[q.type]||q.type;
-      qHtml += `<div class="q-item" style="flex-direction:column;align-items:flex-start;gap:8px">
-        <div style="display:flex;gap:10px;align-items:flex-start">
-          <div class="q-num">${qi+1}</div>
-          <div>
-            <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">${typeLabel}</div>
-            <div class="q-label">${q.question||('Complete the '+typeLabel+' below. Write NO MORE THAN TWO WORDS.')}</div>
-          </div>
-        </div>
-        <div style="margin-left:34px;width:100%;background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:14px;font-size:14px;line-height:2.2">
-          ${contextHtml||'<span style="color:var(--muted)">No context text set yet. Admin can add it with {1}, {2} placeholders.</span>'}
-        </div>
-      </div>`;
-    }
-  }); // end questions.forEach
+  passage.questions.forEach((q,i)=>{ qHtml += buildQuestionHtml(q, offset+i); });
 
-  // score if submitted
+  const passageBody = passage.passage_html ? passage.passage_html
+    : passage.passage_url ? `<div class="reading-open-btn" onclick="window.open('${passage.passage_url}','_blank')">
+        <div class="reading-open-icon">📄</div>
+        <div class="reading-open-text"><h3>Open Reading Passage</h3><p>Click to open the passage in a new tab.</p></div>
+        <div class="reading-open-arrow">↗</div>
+      </div>`
+    : '<div style="color:#166534;font-size:13px;">⚠ No passage added yet.</div>';
+
   let scoreHtml = '';
   if(isSubmitted) {
-    const {correct, total} = gradeQuestions(questions, savedAnswers);
+    const {correct, total} = gradeQuestions(S.allQuestions, S.savedAnswers);
     scoreHtml = `<div class="result-bar">
       <div class="result-score">Score: <span class="correct">${correct}</span><span class="total">/${total}</span> correct</div>
       <span class="submitted-badge">✓ Submitted</span>
     </div>`;
   }
 
+  const navHtml = `<div class="task-footer" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+    <div>${pIdx>0?`<button class="btn btn-outline" onclick="switchReadingPassage(${pIdx-1})">‹ Previous Passage</button>`:''}</div>
+    <div style="display:flex;gap:10px">
+      ${pIdx<passages.length-1?`<button class="btn btn-outline" onclick="switchReadingPassage(${pIdx+1})">Next Passage ›</button>`:''}
+      ${!isSubmitted && S.allQuestions.length>0?`<button class="btn btn-success" onclick="submitReadingTask()">Submit ${isFullTest?'All Answers':'Answers'}</button>`:''}
+    </div>
+  </div>`;
+
   area.innerHTML = `<div class="reading-task-card">
+    ${tabsHtml}
     <div class="reading-split">
-      <div class="reading-passage-col">
-        ${passageHtml?passageHtml
-          :passageUrl?`<div class="reading-open-btn" onclick="window.open('${passageUrl}','_blank')">
-          <div class="reading-open-icon">📄</div>
-          <div class="reading-open-text"><h3>Open Reading Passage</h3><p>Click to open the passage in a new tab.</p></div>
-          <div class="reading-open-arrow">↗</div>
-        </div>`:'<div style="color:#166534;font-size:13px;">⚠ No passage added yet.</div>'}
-      </div>
+      <div class="reading-passage-col">${passageBody}</div>
       <div class="reading-questions-col">
-        <h4>Questions — ${task.title}</h4>
+        <h4>Questions — ${task.title}${isFullTest&&passage.title?(' · '+passage.title):''}</h4>
         ${qHtml||'<div class="empty-state"><div class="icon">📭</div><h3>No questions added yet</h3></div>'}
       </div>
     </div>
-    ${!isSubmitted && questions.length>0?`<div class="task-footer">
-      <div></div>
-      <button class="btn btn-success" onclick="submitReadingTask()">Submit Answers</button>
-    </div>`:''}
+    ${navHtml}
     ${scoreHtml}
   </div>`;
-
-  // restore TFNG/MCQ selections from savedAnswers (for non-submitted state)
-  if(!isSubmitted) {
-    questions.forEach((q,qi)=>{
-      const saved = savedAnswers[qi];
-      if(saved && (q.type==='tfng'||q.type==='ynng')) { const btn=document.getElementById(`qa_${qi}_${saved}`); if(btn) btn.classList.add(`selected-${saved.replace(/\s+/g,'_')}`); }
-      if(saved && q.type==='mcq') { const el=document.getElementById(`qa_${qi}_${saved}`); if(el) el.classList.add('selected'); }
-    });
-  }
 }
 
-function selectMatching(qi, ii, value){}
-function selectDiagramLabel(qi, ii, value){}
-function selectTableItem(qi, ii, value){}
+function selectMatching(qi, ii, value){ setAnswerItem(qi, ii, value); }
+function selectDiagramLabel(qi, ii, value){ setAnswerItem(qi, ii, value); }
+function selectTableItem(qi, ii, value){ setAnswerItem(qi, ii, value); }
 
 function selectTFNG(qi, val) {
   if(S.currentSubmission) return;
+  setAnswer(qi, val);
   const opts=['True','False','Not Given','Yes','No'];
   opts.forEach(o=>{ const b=document.getElementById(`qa_${qi}_${o}`); if(b) b.classList.remove('selected'); });
   const b=document.getElementById(`qa_${qi}_${val}`); if(b) b.classList.add('selected');
@@ -299,44 +354,18 @@ function selectTFNG(qi, val) {
 
 function selectMCQ(qi, letter) {
   if(S.currentSubmission) return;
-  const task=S.task; let data={}; try{data=JSON.parse(task.content);}catch(e){}
-  const opts=data.questions[qi]?.options||[];
+  setAnswer(qi, letter);
+  const q = S.allQuestions[qi];
+  const opts = q?.options||[];
   opts.forEach((_,oi)=>{ const l=String.fromCharCode(65+oi); const el=document.getElementById(`qa_${qi}_${l}`); if(el) el.classList.remove('selected'); });
   const el=document.getElementById(`qa_${qi}_${letter}`); if(el) el.classList.add('selected');
 }
 
 async function submitReadingTask() {
-  const task=S.task; let data={}; try{data=JSON.parse(task.content);}catch(e){}
-  const questions=data.questions||[];
-  const answers={};
-  questions.forEach((q,qi)=>{
-    if(q.type==='gap_fill' || q.type==='short_answer'){ const inp=document.getElementById(`qa_${qi}`); answers[qi]=inp?inp.value.trim():''; }
-    else if(q.type==='tfng' || q.type==='ynng'){
-      const opts = q.type==='ynng' ? ['Yes','No','Not Given'] : ['True','False','Not Given'];
-      opts.forEach(o=>{ const b=document.getElementById(`qa_${qi}_${o}`); if(b&&b.classList.contains(`selected-${o.replace(/\s+/g,'_')}`)) answers[qi]=o; });
-    } else if(q.type==='mcq'){
-      const opts=q.options||[];
-      opts.forEach((_,oi)=>{ const l=String.fromCharCode(65+oi); const el=document.getElementById(`qa_${qi}_${l}`); if(el&&el.classList.contains('selected')) answers[qi]=l; });
-    } else if(q.type==='matching'||q.type==='sentence_endings'){
-      const items=q.items||[];
-      const itemAnswers={};
-      items.forEach((it,ii)=>{ const sel=document.getElementById(`qa_${qi}_${ii}`); if(sel) itemAnswers[ii]=sel.value; });
-      answers[qi]=itemAnswers;
-    } else if(q.type==='diagram_label'){
-      const items=q.items||[];
-      const itemAnswers={};
-      items.forEach((it,ii)=>{ const inp=document.getElementById(`qa_${qi}_${ii}`); if(inp) itemAnswers[ii]=inp.value.trim(); });
-      answers[qi]=itemAnswers;
-    } else if(q.type==='table_completion'||q.type==='summary_completion'||q.type==='flow_chart'||q.type==='note_completion'){
-      const items=q.items||[];
-      const itemAnswers={};
-      items.forEach((_,ii)=>{ const inp=document.getElementById(`qa_${qi}_${ii}`); if(inp) itemAnswers[ii]=inp.value.trim(); });
-      answers[qi]=itemAnswers;
-    }
-  });
-  const {correct, total} = gradeQuestions(questions, answers);
+  const task = S.task;
+  const { correct, total } = gradeQuestions(S.allQuestions, S.readingAnswers);
   try {
-    await post('submissions',{student_id:S.student.id, task_id:task.id, answer:JSON.stringify(answers), score:correct, total});
+    await post('submissions',{student_id:S.student.id, task_id:task.id, answer:JSON.stringify(S.readingAnswers), score:correct, total});
     showResults(task, correct, total);
   } catch(e){ toast(e.message,'error'); }
 }
