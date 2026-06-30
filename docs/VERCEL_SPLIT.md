@@ -7,8 +7,8 @@ Create two Vercel projects from the same GitHub repository.
 - Project name: `ielts-pro-student`
 - Root directory: repository root (`.`)
 - Install command: `npm install`
-- Build command: `npm run build:student`
-- Output directory: `apps/student-web/.next`
+- Build command: `npm run build:vercel`
+- Output directory: `.next`
 
 Environment variables:
 
@@ -26,8 +26,8 @@ Suggested production domain:
 - Project name: `ielts-pro-admin`
 - Root directory: repository root (`.`)
 - Install command: `npm install`
-- Build command: `npm run build:admin`
-- Output directory: `apps/admin-web/.next`
+- Build command: `npm run build:admin && rm -rf .next && cp -R apps/admin-web/.next .next`
+- Output directory: `.next`
 
 Environment variables:
 
