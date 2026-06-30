@@ -448,12 +448,16 @@ function applyJsonImport(){
 
   if(Array.isArray(data.passages) && data.passages.length){
     TASK_FORMAT = 'full';
-    TASK_PASSAGES = data.passages.map(p=>({title:p.title||'',html:p.html||'<p></p>'}));
+    TASK_PASSAGES = data.passages.map(p=>({title:p.title||'', html:p.html||p.passage_html||'<p></p>'}));
   } else {
     TASK_FORMAT = 'single';
     TASK_SINGLE_PASSAGE_HTML = data.passage_html || '<p></p>';
   }
-  TASK_QUESTIONS = data.questions.map(q=>({...q}));
+  TASK_QUESTIONS = data.questions.map(q=>{
+    const copy = {...q};
+    if(TASK_FORMAT==='full' && copy.passage===undefined) copy.passage = 0;
+    return copy;
+  });
   if(TASK_FORMAT==='full'){
     const timeEl = ()=>document.getElementById('m-fulltest-time');
     renderReadingSkillFields();
@@ -461,7 +465,10 @@ function applyJsonImport(){
   } else {
     renderReadingSkillFields();
   }
-  toast('Imported into builder — review below, then Save Task','success');
+  const unassignedNote = (TASK_FORMAT==='full' && data.questions.some(q=>q.passage===undefined))
+    ? ' (questions without a "passage" field were assigned to Passage 1 — reassign any that belong elsewhere using the dropdown on each question)'
+    : '';
+  toast('Imported into builder — review below, then Save Task'+unassignedNote,'success');
 }
 
 function onReadingFormatChange(fmt){
@@ -575,11 +582,12 @@ function applyPassageJsonImport(pi){
   const data = res.data;
   if(res.wasSanitized) toast('Fixed some smart quotes / trailing commas automatically','success');
   if(!data || typeof data!=='object') return toast('JSON must be an object','error');
-  if(data.html===undefined && data.questions===undefined) return toast('JSON needs "html" and/or "questions"','error');
+  if(data.html===undefined && data.passage_html===undefined && data.questions===undefined) return toast('JSON needs "html" and/or "questions"','error');
 
   captureCurrentPassageHtml();
   if(data.title!==undefined) TASK_PASSAGES[pi].title = data.title||'';
-  if(data.html!==undefined) TASK_PASSAGES[pi].html = data.html || '<p></p>';
+  const htmlVal = data.html!==undefined ? data.html : data.passage_html;
+  if(htmlVal!==undefined) TASK_PASSAGES[pi].html = htmlVal || '<p></p>';
 
   if(Array.isArray(data.questions)){
     TASK_QUESTIONS = TASK_QUESTIONS.filter(q=>(q.passage||0)!==pi);
