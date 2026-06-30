@@ -472,7 +472,8 @@ function renderQuestionBuilder(){
       ${showTfng?`<button type="button" class="btn btn-outline btn-sm" onclick="addQuestion('tfng')">+ True/False/NG</button>`:''}
       ${showTfng?`<button type="button" class="btn btn-outline btn-sm" onclick="addQuestion('ynng')">+ Yes/No/NG</button>`:''}
       <button type="button" class="btn btn-outline btn-sm" onclick="addQuestion('mcq')">+ Multiple Choice</button>
-      <button type="button" class="btn btn-outline btn-sm" onclick="addQuestion('matching')">+ Matching Features</button>
+      <button type="button" class="btn btn-outline btn-sm" onclick="addQuestion('mcq_multi')">+ Choose Two/More</button>
+      <button type="button" class="btn btn-outline btn-sm" onclick="addQuestion('matching')">+ Matching (tick the grid checkbox for paragraph/feature matching)</button>
       ${showTfng?`<button type="button" class="btn btn-outline btn-sm" onclick="addQuestion('sentence_endings')">+ Sentence Endings</button>`:''}
       ${showTfng?`<button type="button" class="btn btn-outline btn-sm" onclick="addQuestion('summary_completion')">+ Summary Completion</button>`:''}
       ${showTfng?`<button type="button" class="btn btn-outline btn-sm" onclick="addQuestion('note_completion')">+ Note Completion</button>`:''}
@@ -485,7 +486,7 @@ function renderQuestionBuilder(){
 }
 
 function questionEditorHtml(q, qi){
-  const typeLabel = {gap_fill:'Gap Fill',tfng:'True/False/NG',ynng:'Yes/No/NG',mcq:'Multiple Choice',matching:'Matching Features',short_answer:'Short Answer',sentence_endings:'Sentence Endings',summary_completion:'Summary Completion',note_completion:'Note Completion',table_completion:'Table Completion',flow_chart:'Flow-Chart',diagram_label:'Diagram Label'}[q.type]||q.type;
+  const typeLabel = {gap_fill:'Gap Fill',tfng:'True/False/NG',ynng:'Yes/No/NG',mcq:'Multiple Choice',mcq_multi:'Choose Two/More',matching:'Matching',sentence_endings:'Sentence Endings',summary_completion:'Summary Completion',note_completion:'Note Completion',table_completion:'Table Completion',flow_chart:'Flow-Chart',diagram_label:'Diagram Label',short_answer:'Short Answer'}[q.type]||q.type;
   const passageSelectHtml = (TASK_FORMAT==='full') ? `
     <select onchange="updateQuestion(${qi},'passage',parseInt(this.value))" style="margin-bottom:8px">
       ${TASK_PASSAGES.map((p,pi)=>`<option value="${pi}" ${ (q.passage||0)===pi ?'selected':''}>${p.title?('Passage '+(pi+1)+' — '+p.title):('Passage '+(pi+1))}</option>`).join('')}
@@ -523,11 +524,32 @@ function questionEditorHtml(q, qi){
       </div>`;
     }).join('') + `</div>`;
   }
+  if(q.type==='mcq_multi'){
+    const opts = q.options && q.options.length ? q.options : Array(5).fill('');
+    const answer = Array.isArray(q.answer) ? q.answer : [];
+    return common + `
+      <div class="hint-text" style="margin-bottom:6px">Check all correct options (students must choose exactly this many):</div>
+      ${opts.map((o,oi)=>{
+        const letter=String.fromCharCode(65+oi);
+        const checked = answer.includes(letter);
+        return `<div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
+          <input type="checkbox" ${checked?'checked':''} onchange="toggleMcqMultiAnswer(${qi},'${letter}',this.checked)" style="width:auto"/>
+          <span style="font-weight:600;width:18px">${letter}</span>
+          <input placeholder="Option ${letter}" value="${(o||'').replace(/"/g,'&quot;')}" oninput="updateOption(${qi},${oi},this.value)" style="flex:1"/>
+          <button type="button" class="btn btn-danger btn-sm" onclick="removeMcqMultiOption(${qi},${oi})">✕</button>
+        </div>`;
+      }).join('')}
+      <button type="button" class="btn btn-outline btn-sm" onclick="addMcqMultiOption(${qi})" style="margin-top:4px">+ Option</button>
+    </div>`;
+  }
   if(q.type==='matching' || q.type==='sentence_endings'){
     const items = q.items && q.items.length ? q.items : [{label:'',answer:''}];
     const matchOptions = q.matchOptions && q.matchOptions.length ? q.matchOptions : ['',''];
     const isSentEndings = q.type==='sentence_endings';
-    return common + `
+    const gridToggle = (q.type==='matching') ? `<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);margin-bottom:10px">
+      <input type="checkbox" style="width:auto" ${q.grid?'checked':''} onchange="updateQuestion(${qi},'grid',this.checked)"/> Display as grid table (Matching Information / Matching Features style — click cells instead of a dropdown)
+    </label>` : '';
+    return common + gridToggle + `
       <div class="hint-text" style="margin-bottom:6px">${isSentEndings?'Sentence endings (A, B, C…):':'Option pool students choose from:'}</div>
       ${matchOptions.map((o,oi)=>`<div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
         <span style="font-weight:600;width:22px">${isSentEndings?String.fromCharCode(65+oi):oi+1+'.'}</span>
@@ -585,6 +607,20 @@ function updateMatchItem(qi,ii,field,value){ TASK_QUESTIONS[qi].items[ii][field]
 function addMatchOption(qi){ TASK_QUESTIONS[qi].matchOptions=TASK_QUESTIONS[qi].matchOptions||[]; TASK_QUESTIONS[qi].matchOptions.push(''); renderQuestionBuilder(); }
 function removeMatchOption(qi,oi){ TASK_QUESTIONS[qi].matchOptions.splice(oi,1); renderQuestionBuilder(); }
 function updateMatchOption(qi,oi,value){ TASK_QUESTIONS[qi].matchOptions[oi]=value; }
+function toggleMcqMultiAnswer(qi,letter,checked){
+  const q=TASK_QUESTIONS[qi];
+  q.answer = Array.isArray(q.answer) ? q.answer : [];
+  if(checked){ if(!q.answer.includes(letter)) q.answer.push(letter); }
+  else q.answer = q.answer.filter(l=>l!==letter);
+}
+function addMcqMultiOption(qi){ TASK_QUESTIONS[qi].options=TASK_QUESTIONS[qi].options||[]; TASK_QUESTIONS[qi].options.push(''); renderQuestionBuilder(); }
+function removeMcqMultiOption(qi,oi){
+  const q=TASK_QUESTIONS[qi];
+  const letter=String.fromCharCode(65+oi);
+  q.options.splice(oi,1);
+  q.answer = (q.answer||[]).filter(l=>l!==letter);
+  renderQuestionBuilder();
+}
 function addGapItem(qi){ TASK_QUESTIONS[qi].items=TASK_QUESTIONS[qi].items||[]; TASK_QUESTIONS[qi].items.push({answer:''}); renderQuestionBuilder(); }
 function removeGapItem(qi,ii){ TASK_QUESTIONS[qi].items.splice(ii,1); renderQuestionBuilder(); }
 function updateGapItem(qi,ii,value){ if(!TASK_QUESTIONS[qi].items) TASK_QUESTIONS[qi].items=[]; if(!TASK_QUESTIONS[qi].items[ii]) TASK_QUESTIONS[qi].items[ii]={answer:''}; TASK_QUESTIONS[qi].items[ii].answer=value; }
@@ -626,6 +662,9 @@ function validateQuestions(questions, passages){
     if(q.type==='mcq'){
       if(q.options.some(o=>!o.trim())) return 'Fill in all multiple-choice options';
       if(!q.answer) return 'Pick the correct option for every multiple-choice question';
+    } else if(q.type==='mcq_multi'){
+      if(!q.options || q.options.some(o=>!o.trim())) return 'Fill in all options for choose-multiple questions';
+      if(!q.answer || q.answer.length<2) return 'Check at least two correct options for choose-multiple questions';
     } else if(q.type==='matching'||q.type==='sentence_endings'){
       if(!q.matchOptions || q.matchOptions.some(o=>!o.trim())) return 'Fill in all options (the pool students choose from)';
       if(!q.items || q.items.length===0) return 'Add at least one item to match';
@@ -652,6 +691,7 @@ function addQuestion(type){
   const base = {type, question:'', answer:''};
   if(TASK_FORMAT==='full') base.passage = 0;
   if(type==='mcq') base.options = Array(TASK_QUESTIONS_SKILL==='listening'?3:4).fill('');
+  if(type==='mcq_multi'){ base.options = Array(5).fill(''); base.answer=[]; base.maxAnswers=2; }
   if(type==='matching'||type==='sentence_endings'){ base.items=[{label:'',answer:''}]; base.matchOptions=['','']; delete base.answer; }
   if(type==='diagram_label'){ base.items=[{label:'1',answer:''}]; base.image_url=''; delete base.answer; }
   if(type==='summary_completion'||type==='note_completion'||type==='table_completion'||type==='flow_chart'){ base.items=[{answer:''}]; base.context=''; delete base.answer; }
@@ -854,17 +894,31 @@ function openSubmission(id){
     const questions = taskData.questions||[];
     let savedAnswers={}; try{savedAnswers=JSON.parse(sub.answer||'{}');}catch(e){}
     const breakdown = questions.map((q,qi)=>{
-      if(q.type==='matching'){
+      if(['matching','sentence_endings','diagram_label','table_completion','summary_completion','flow_chart','note_completion'].includes(q.type)){
         const items=q.items||[];
         const savedMatch = savedAnswers[qi]&&typeof savedAnswers[qi]==='object'?savedAnswers[qi]:{};
+        const fuzzy = ['diagram_label','table_completion','summary_completion','flow_chart','note_completion'].includes(q.type);
         return items.map((it,ii)=>{
-          const given=savedMatch[ii]||'(no answer)';
-          const ok = given===it.answer;
+          const rawGiven = savedMatch[ii];
+          const given = (rawGiven===undefined || rawGiven==='') ? '(no answer)' : rawGiven;
+          const correctAns = it.answer||'';
+          const ok = fuzzy
+            ? String(given).toLowerCase().trim()===correctAns.toLowerCase().trim()
+            : given===correctAns;
           return `<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px">
-            <span>${qi+1}. ${it.label}</span>
-            <span style="color:${ok?'#15803d':'#dc2626'}">${given} ${ok?'✓':'(answer: '+it.answer+')'}</span>
+            <span>${qi+1}. ${it.label||('Gap '+(ii+1))}</span>
+            <span style="color:${ok?'#15803d':'#dc2626'}">${given} ${ok?'✓':'(answer: '+correctAns+')'}</span>
           </div>`;
         }).join('');
+      }
+      if(q.type==='mcq_multi'){
+        const savedArr = Array.isArray(savedAnswers[qi])?savedAnswers[qi]:[];
+        const correctArr = q.answer||[];
+        const ok = correctArr.length===savedArr.length && correctArr.every(l=>savedArr.includes(l));
+        return `<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px">
+          <span>${qi+1}. ${q.question}</span>
+          <span style="color:${ok?'#15803d':'#dc2626'}">${savedArr.join(', ')||'(no answer)'} ${ok?'✓':'(answer: '+correctArr.join(', ')+')'}</span>
+        </div>`;
       }
       const given = savedAnswers[qi]!==undefined?savedAnswers[qi]:'(no answer)';
       const ok = q.type==='gap_fill'||q.type==='short_answer'
