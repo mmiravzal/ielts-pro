@@ -510,3 +510,11 @@ audio::-webkit-media-controls-panel { background: rgba(255,255,255,0.1); }
 .tf-option-radio.wrong { border-color: var(--red); background: #fef2f2; }
 .tf-option-radio.wrong .tf-dot::after { background: var(--red); }
 .tf-option-radio[disabled-look] { cursor: default; }
+
+/* ── "Choose N" multi-select MCQ checkboxes ── */
+.mcq-option .mcq-letter { font-size: 16px; }
+.mcq-option.correct .mcq-letter, .mcq-option.wrong .mcq-letter { font-weight: 800; }
+
+/* ── Matching grid table sub-header hint (Matching Information / Features) ── */
+.matching-table thead th:first-child { text-align: left; background-color: var(--navy, #0f1e3c); }
+.q-type-hint { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 4px; }
