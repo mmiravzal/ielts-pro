@@ -182,7 +182,16 @@ function buildQuestionHtml(q, qi){
         <div class="q-label">${q.question||''}</div>
       </div>
       <div style="margin-left:34px;width:100%">
-        <div class="hint-text" style="margin-bottom:8px">Options: ${matchOptions.map((o,oi)=>`<strong>${oi+1}.</strong> ${o}`).join('&nbsp;&nbsp;')}</div>
+       <div class="hint-text" style="margin-bottom:12px">
+<strong>Options</strong>
+<div style="margin-top:8px">
+${matchOptions.map((o,oi)=>`
+<div style="padding:4px 0">
+<strong>${oi+1}.</strong> ${o}
+</div>
+`).join('')}
+</div>
+</div>
         ${items.map((it,ii)=>{
           const itemSaved = savedMatch[ii]||'';
           const isCorrect = itemSaved===it.answer;
@@ -204,8 +213,8 @@ function buildQuestionHtml(q, qi){
     const matchOptions = q.matchOptions||[];
     const savedMatch = saved && typeof saved==='object' ? saved : {};
     const endingsHtml = matchOptions.map(function(o,oi){
-      return '<span style="display:inline-block;margin:3px 8px 3px 0"><strong>'+String.fromCharCode(65+oi)+'.</strong> '+o+'</span>';
-    }).join('');
+      return '<div style="padding:4px 0"><strong>'+String.fromCharCode(65+oi)+'.</strong> '+o+'</div>';
+}).join('');
     const itemsHtml = items.map(function(it,ii){
       const itemSaved = savedMatch[ii]||'';
       const isCorrect = itemSaved===it.answer;
