@@ -87,6 +87,19 @@ function goBackToLesson(){
 // grading/data shape stays identical across both reading task types) ──
 function renderQuestionHtml(q, qi, saved, isSubmitted){
   if(q.type==='gap_fill' || q.type==='short_answer'){
+    const hasInlineBlank = /_{3,}/.test(q.question||'');
+    if(hasInlineBlank){
+      const inputCls = `q-input${isSubmitted?((saved||'').toLowerCase().trim()===(q.answer||'').toLowerCase().trim()?' correct':' wrong'):''}`;
+      const inputHtml = `<input class="${inputCls}" id="qa_${qi}" value="${saved||''}" ${isSubmitted?'disabled':''} style="display:inline-block;width:160px;margin:0 6px;vertical-align:middle"/>`;
+      const labelHtml = (q.question||'').replace(/_{3,}/, inputHtml);
+      return `<div class="q-item">
+        <div class="q-num">${qi+1}</div>
+        <div style="flex:1">
+          <div class="q-label">${labelHtml}</div>
+          ${isSubmitted?`<div style="font-size:12px;color:var(--muted);margin-top:4px">Answer: <strong>${q.answer||''}</strong></div>`:''}
+        </div>
+      </div>`;
+    }
     return `<div class="q-item">
       <div class="q-num">${qi+1}</div>
       <div style="flex:1">
@@ -254,7 +267,7 @@ function renderQuestionHtml(q, qi, saved, isSubmitted){
   if(q.type==='table_completion'||q.type==='summary_completion'||q.type==='flow_chart'||q.type==='note_completion'){
     const items = q.items||[];
     const savedMatch = saved && typeof saved==='object' ? saved : {};
-    let contextHtml = (q.context||'').replace(/</g,'&lt;');
+    let contextHtml = (q.context||'');
     contextHtml = contextHtml.replace(/\{(\d+)\}/g, (m,n)=>{
       const idx = parseInt(n)-1;
       const it = items[idx]||{answer:''};
@@ -346,7 +359,14 @@ function renderActivePassage(){
   const qHtml = (data.questions||[]).map((q,qi)=>{
     if((q.passage||0)!==S.activePassage) return '';
     const saved = isSubmitted ? savedAnswers[qi] : CURRENT_ANSWERS[qi];
-    return renderQuestionHtml(q, qi, saved, isSubmitted);
+    try{
+      return renderQuestionHtml(q, qi, saved, isSubmitted);
+    }catch(err){
+      console.error(`Question ${qi+1} (type "${q.type}") failed to render:`, err);
+      return `<div class="q-item" style="border:1px solid var(--rt-bad);background:var(--rt-bad-soft);border-radius:8px;padding:10px 14px;color:var(--rt-bad);font-size:13px">
+        Question ${qi+1} (${q.type||'unknown type'}) couldn't be displayed — ${err.message}. Check its data in the admin builder.
+      </div>`;
+    }
   }).join('');
 
   let scoreHtml='';
@@ -478,11 +498,20 @@ window.addEventListener('load', async ()=>{
       S.savedAnswers = {};
       startTimer(data.time_limit_minutes||60);
     }
-
-    renderActivePassage();
   }catch(e){
     toast(e.message,'error');
     document.getElementById('rft-passage-panel').innerHTML='<div class="empty-state"><div class="icon">⚠</div><h3>Could not load test</h3></div>';
+    return;
+  }
+
+  // Rendering is wrapped separately from the data fetch above: a problem
+  // here (e.g. a malformed question from an imported task) should never
+  // erase the passage text that already loaded successfully.
+  try{
+    renderActivePassage();
+  }catch(e){
+    console.error('renderActivePassage failed:', e);
+    toast('Some questions could not be displayed: '+e.message,'error');
   }
 });
 </script>
