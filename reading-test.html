@@ -104,14 +104,14 @@ function renderQuestionHtml(q, qi, saved, isSubmitted){
         <div class="q-num">${qi+1}</div>
         <div class="q-label">${q.question||''}</div>
       </div>
-      <div class="tfng-group" style="margin-left:34px">
+      <div class="tf-option-list" style="margin-left:34px;max-width:260px;width:100%">
         ${opts.map(o=>{
           const isSelected = saved===o;
           const correct = q.answer||'';
           let cls = isSelected ? 'selected' : '';
           if(isSubmitted && isSelected) cls = saved===correct?'correct':'wrong';
           if(isSubmitted && o===correct && !isSelected) cls='correct';
-          return `<button class="tfng-btn ${cls}" id="qa_${qi}_${o}" ${isSubmitted?'disabled':''} onclick="selectTFNG(${qi},'${o}')">${o}</button>`;
+          return `<div class="tf-option-radio ${cls}" id="qa_${qi}_${o}" ${isSubmitted?'':`onclick="selectTFNG(${qi},'${o}')"`}><span class="tf-dot"></span><span>${o}</span></div>`;
         }).join('')}
       </div>
       ${isSubmitted?`<div style="font-size:12px;color:var(--muted);margin-left:34px">Answer: <strong>${q.answer||''}</strong></div>`:''}
@@ -139,11 +139,71 @@ function renderQuestionHtml(q, qi, saved, isSubmitted){
       ${isSubmitted?`<div style="font-size:12px;color:var(--muted);margin-left:34px;margin-top:4px">Answer: <strong>${q.answer||''}</strong></div>`:''}
     </div>`;
   }
+  if(q.type==='mcq_multi'){
+    const opts = q.options||[];
+    const correctSet = q.answer||[];
+    const maxPick = q.maxAnswers || correctSet.length || 2;
+    const savedArr = Array.isArray(saved) ? saved : [];
+    return `<div style="margin-bottom:16px">
+      <div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:8px">
+        <div class="q-num">${qi+1}</div>
+        <div class="q-label">${q.question||''} <span style="color:var(--muted);font-size:12px;font-weight:600">(choose ${maxPick})</span></div>
+      </div>
+      <div style="margin-left:34px">
+        ${opts.map((o,oi)=>{
+          const letter=String.fromCharCode(65+oi);
+          const isChecked = savedArr.includes(letter);
+          let cls='';
+          if(isSubmitted){
+            if(isChecked) cls = correctSet.includes(letter)?'correct':'wrong';
+            else if(correctSet.includes(letter)) cls='correct';
+          } else if(isChecked) cls='selected';
+          const clickAttr = isSubmitted ? 'style="cursor:default"' : `onclick="toggleMcqMulti(${qi},'${letter}',${maxPick})"`;
+          return `<div class="mcq-option ${cls}" id="qa_${qi}_${letter}" ${clickAttr}>
+            <div class="mcq-letter">${isChecked?'☑':'☐'}</div>
+            <div class="mcq-text">${o}</div>
+          </div>`;
+        }).join('')}
+      </div>
+      ${isSubmitted?`<div style="font-size:12px;color:var(--muted);margin-left:34px;margin-top:4px">Answers: <strong>${correctSet.join(', ')}</strong></div>`:''}
+    </div>`;
+  }
   if(q.type==='matching' || q.type==='sentence_endings'){
     const items = q.items||[];
     const matchOptions = q.matchOptions||[];
     const isSentEndings = q.type==='sentence_endings';
     const savedMatch = saved && typeof saved==='object' ? saved : {};
+    if(q.type==='matching' && q.grid){
+      return `<div class="q-item" style="flex-direction:column;align-items:flex-start;gap:10px">
+        <div style="display:flex;gap:10px;align-items:flex-start">
+          <div class="q-num">${qi+1}</div>
+          <div class="q-label">${q.question||''}</div>
+        </div>
+        <div class="table-container" style="margin-left:34px;width:calc(100% - 34px)">
+          <table class="matching-table">
+            <thead><tr><th style="text-align:left">Statement</th>${matchOptions.map(o=>`<th>${o}</th>`).join('')}</tr></thead>
+            <tbody>
+              ${items.map((it,ii)=>{
+                const itemSaved = savedMatch[ii]||'';
+                return `<tr>
+                  <td class="statement">${it.label}</td>
+                  ${matchOptions.map((o,oi)=>{
+                    const isSelected = itemSaved===o;
+                    let cls = isSelected ? 'clickable-cell selected' : 'clickable-cell';
+                    if(isSubmitted){
+                      cls = isSelected ? (itemSaved===it.answer?'correct':'incorrect') : (o===it.answer?'correct-answer-highlight':'');
+                    }
+                    const clickAttr = isSubmitted ? '' : `onclick="selectMatchingGridCell(${qi},${ii},'${(o||'').replace(/'/g,"\\'")}',${oi})"`;
+                    return `<td class="${cls}" data-grid-row="${qi}_${ii}" data-grid-col="${oi}" ${clickAttr}></td>`;
+                  }).join('')}
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+        ${isSubmitted?`<div style="font-size:12px;color:var(--muted);margin-left:34px">Green = correct answer column for each row.</div>`:''}
+      </div>`;
+    }
     return `<div class="q-item" style="flex-direction:column;align-items:flex-start;gap:10px">
       <div style="display:flex;gap:10px;align-items:flex-start">
         <div class="q-num">${qi+1}</div>
@@ -241,6 +301,21 @@ function selectMCQ(qi, letter) {
   CURRENT_ANSWERS[qi]=letter;
 }
 function selectMatching(qi, ii, value){ if(!CURRENT_ANSWERS[qi] || typeof CURRENT_ANSWERS[qi]!=='object') CURRENT_ANSWERS[qi]={}; CURRENT_ANSWERS[qi][ii]=value; }
+function selectMatchingGridCell(qi, ii, value, oi){
+  if(S.currentSubmission) return;
+  selectMatching(qi, ii, value);
+  document.querySelectorAll(`[data-grid-row="${qi}_${ii}"]`).forEach(td=>td.classList.remove('selected'));
+  const cell = document.querySelector(`[data-grid-row="${qi}_${ii}"][data-grid-col="${oi}"]`);
+  if(cell) cell.classList.add('selected');
+}
+function toggleMcqMulti(qi, letter, maxPick){
+  if(S.currentSubmission) return;
+  let arr = Array.isArray(CURRENT_ANSWERS[qi]) ? CURRENT_ANSWERS[qi].slice() : [];
+  if(arr.includes(letter)) arr = arr.filter(x=>x!==letter);
+  else { if(arr.length>=maxPick) arr.shift(); arr.push(letter); }
+  CURRENT_ANSWERS[qi]=arr;
+  renderActivePassage();
+}
 function selectDiagramLabel(qi, ii, value){ if(!CURRENT_ANSWERS[qi] || typeof CURRENT_ANSWERS[qi]!=='object') CURRENT_ANSWERS[qi]={}; CURRENT_ANSWERS[qi][ii]=value; }
 function selectTableItem(qi, ii, value){ if(!CURRENT_ANSWERS[qi] || typeof CURRENT_ANSWERS[qi]!=='object') CURRENT_ANSWERS[qi]={}; CURRENT_ANSWERS[qi][ii]=value; }
 
@@ -304,6 +379,8 @@ function collectAnswers(){
       answers[qi] = inp ? inp.value.trim() : (CURRENT_ANSWERS[qi]||'');
     } else if(q.type==='tfng' || q.type==='ynng' || q.type==='mcq'){
       answers[qi] = CURRENT_ANSWERS[qi]||'';
+    } else if(q.type==='mcq_multi'){
+      answers[qi] = CURRENT_ANSWERS[qi]||[];
     } else {
       answers[qi] = CURRENT_ANSWERS[qi]||{};
     }
