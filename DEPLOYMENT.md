@@ -33,6 +33,7 @@ Environment variables:
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `ADMIN_SESSION_SECRET`
 - `ADMIN_EMAILS`
+- `NEXT_PUBLIC_STUDENT_APP_URL` for admin "Preview as student" links, for example `https://ielts-pro-student.vercel.app`
 
 ## Smoke Checklist After Deploy
 
@@ -51,6 +52,9 @@ Admin:
 - `/` loads the teacher login.
 - Admin auth works for an email in `ADMIN_EMAILS`.
 - `/dashboard`, `/students`, `/lessons`, `/submissions` load.
+- `/full-tests` and `/full-tests/new` load.
+- Full Test Builder can save a draft and optional listening audio upload.
+- JSON import creates a full-test lesson and task.
 - Publish/unpublish works.
 - Writing review saves score and feedback.
 
@@ -61,4 +65,3 @@ After the Next apps are confirmed in production, apply and verify:
 - `supabase/migrations/20260630190000_harden_lms_access.sql`
 
 Rotate any service role key that was pasted into chat or shared outside Vercel/Supabase secret storage.
-

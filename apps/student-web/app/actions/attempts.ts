@@ -38,6 +38,10 @@ export async function submitTaskAttempt(formData: FormData) {
   });
 
   const { correct, total } = gradeQuestions(content.questions || [], answers);
+  const fullWritingAnswer = String(formData.get("full_writing_answer") || "").trim();
+  if (task.skill === "full_test" && fullWritingAnswer) {
+    answers.writing_response = fullWritingAnswer;
+  }
   await submitAttempt(supabase, {
     studentId: session.id,
     taskId,

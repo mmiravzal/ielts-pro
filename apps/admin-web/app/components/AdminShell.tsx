@@ -20,7 +20,9 @@ function Sidebar({ email }: { email: string }) {
       <nav aria-label="Admin navigation">
         <Link href="/dashboard">Dashboard</Link>
         <Link href="/students">Students</Link>
-        <Link href="/lessons">Lessons & Tests</Link>
+        <Link href="/lessons">Content Studio</Link>
+        <Link href="/full-tests">Full Tests</Link>
+        <Link href="/full-tests/new">Test Builder</Link>
         <Link href="/submissions">Writing Review</Link>
       </nav>
       <div className="sidebar-user">

@@ -7,6 +7,9 @@ Date: 2026-07-01
 - `frontend-design`: used for the premium IELTS LMS visual direction and UI polish.
 - `browser:control-in-app-browser`: used for desktop/mobile browser inspection of the student/admin login experiences.
 - `web-design-guidelines`: used for accessibility and interface audit checks.
+- `nextjs-best-practices`: used for App Router route/action boundaries and Vercel build checks.
+- `supabase`: used for server-only Supabase Storage upload and Data API safety checks.
+- `webapp-testing`: used for Playwright-based local browser QA.
 
 ## Reference Review
 
@@ -53,7 +56,14 @@ Smoke test coverage added:
 - Student `/` renders.
 - Student `/dashboard`, `/progress`, `/tests/smoke-task` redirect while unauthenticated.
 - Admin `/` renders.
-- Admin `/dashboard`, `/students`, `/lessons`, `/submissions` redirect while unauthenticated.
+- Admin `/dashboard`, `/students`, `/lessons`, `/full-tests`, `/full-tests/new`, `/submissions` redirect while unauthenticated.
+
+Additional browser QA in this pass:
+
+- Student login desktop screenshot passed with no console errors.
+- Admin Full Test Builder desktop screenshot passed with no console errors.
+- Admin Full Test Builder mobile screenshot passed with no console errors.
+- Admin DB-backed pages require local Supabase env values; without them, `/lessons` correctly cannot render protected data locally.
 
 ## Manual Live Checks Still Required
 
@@ -68,10 +78,13 @@ These require production Supabase env values and real seeded data:
 7. Login as admin with Supabase Auth.
 8. Publish/unpublish a lesson.
 9. Create a lesson.
-10. Review a writing submission and save score/feedback.
-11. Confirm student `/progress` shows the teacher feedback.
-12. Confirm unpublished task direct URL returns blocked/not found.
+10. Create a full test draft from `/full-tests/new`.
+11. Import a full test JSON file.
+12. Upload a listening audio file to the `task-media` bucket and verify student playback.
+13. Review a writing submission and save score/feedback.
+14. Confirm student `/progress` shows the teacher feedback.
+15. Confirm unpublished task direct URL returns blocked/not found.
 
 ## Result
 
-The UI is now substantially more premium and IELTS-specific. The remaining high-value work is not visual: add a real admin question builder, live writing word count, and run production Supabase smoke checks after deployment.
+The UI is now substantially more premium and IELTS-specific. Full-test creation, JSON import, student section rendering, and server-side audio upload support are implemented. Remaining high-value work: add existing-test edit/reorder screens, live writing word count, and run production Supabase smoke checks after deployment.

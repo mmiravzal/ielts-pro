@@ -40,6 +40,12 @@ export type Task = {
   lessons?: Pick<Lesson, "title" | "published"> | null;
 };
 
+export type NewTaskInput = Pick<Task, "lesson_id" | "title" | "skill" | "task_type" | "content" | "order"> & {
+  audio_url?: string | null;
+  html_url?: string | null;
+  html_path?: string | null;
+};
+
 export type Submission = {
   id: string;
   student_id: string;
@@ -72,6 +78,18 @@ export type TaskContent = {
   instructions?: string;
   min_words?: number;
   time_limit_minutes?: number;
+  duration_minutes?: number;
+  difficulty?: string;
+  sections?: Array<{
+    skill?: Skill | string;
+    title?: string;
+    instructions?: string;
+    passage_html?: string;
+    audio_url?: string;
+    transcript?: string;
+    prompt?: string;
+    questions?: Question[];
+  }>;
   questions?: Question[];
 };
 

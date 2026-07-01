@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Group, Lesson, Student, Submission, Task } from "./types.js";
+import type { Group, Lesson, NewTaskInput, Student, Submission, Task } from "./types.js";
 
 export async function getPublishedLessons(supabase: SupabaseClient) {
   const { data, error } = await supabase
@@ -135,6 +135,12 @@ export async function createLesson(supabase: SupabaseClient, input: Pick<Lesson,
   const { data, error } = await supabase.from("lessons").insert(input).select().single();
   if (error) throw error;
   return data as Lesson;
+}
+
+export async function createTask(supabase: SupabaseClient, input: NewTaskInput) {
+  const { data, error } = await supabase.from("tasks").insert(input).select().single();
+  if (error) throw error;
+  return data as Task;
 }
 
 export async function updateLesson(supabase: SupabaseClient, id: string, input: Partial<Pick<Lesson, "title" | "description" | "order" | "published" | "skill">>) {

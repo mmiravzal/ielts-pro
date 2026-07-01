@@ -17,6 +17,7 @@ export default async function TestPage({ params }: { params: Promise<{ taskId: s
   if (!task) notFound();
   const content = parseTaskContent<TaskContent>(task.content, { questions: [] });
   const questionCount = content.questions?.length || 0;
+  const isFullTest = task.skill === "full_test";
 
   return (
     <StudentShell name={session.name}>
@@ -43,7 +44,9 @@ export default async function TestPage({ params }: { params: Promise<{ taskId: s
           <form action={submitTaskAttempt} className="exam-layout">
             <input type="hidden" name="taskId" value={task.id} />
             <section className="card passage">
-              {task.skill === "writing" ? (
+              {isFullTest ? (
+                <FullTestBrief content={content} />
+              ) : task.skill === "writing" ? (
                 <>
                   <p className="eyebrow">Writing prompt</p>
                   <h2>Task response</h2>
@@ -69,7 +72,7 @@ export default async function TestPage({ params }: { params: Promise<{ taskId: s
               <div className="question-panel-head">
                 <div>
                   <p className="eyebrow">Answer sheet</p>
-                  <h2>{task.skill === "writing" ? "Your response" : `${questionCount} questions`}</h2>
+                <h2>{task.skill === "writing" ? "Your response" : `${questionCount} questions`}</h2>
                 </div>
                 {content.time_limit_minutes ? <Badge tone="warning">{content.time_limit_minutes} min</Badge> : null}
               </div>
@@ -78,7 +81,17 @@ export default async function TestPage({ params }: { params: Promise<{ taskId: s
                   Your response
                 <Textarea name="writing_answer" placeholder="Write your IELTS response here…" required />
                 </label>
-              ) : content.questions?.length ? content.questions.map((question, index) => <QuestionInput question={question} index={index} key={index} />) : <EmptyState title="No questions" body="This task has no questions yet." />}
+              ) : (
+                <>
+                  {content.questions?.length ? content.questions.map((question, index) => <QuestionInput question={question} index={index} key={index} />) : <EmptyState title="No objective questions" body="This task may only contain writing prompts." />}
+                  {isFullTest && writingPrompt(content) ? (
+                    <label className="writing-box">
+                      Writing response
+                      <Textarea name="full_writing_answer" placeholder="Write your Task 1 and Task 2 responses here…" />
+                    </label>
+                  ) : null}
+                </>
+              )}
               <Button type="submit">Submit answers</Button>
             </section>
             <aside className="card test-aside">
@@ -91,6 +104,42 @@ export default async function TestPage({ params }: { params: Promise<{ taskId: s
       </main>
     </StudentShell>
   );
+}
+
+function FullTestBrief({ content }: { content: TaskContent }) {
+  const sections = content.sections || [];
+  const reading = sections.find((section) => section.skill === "reading");
+  const listening = sections.find((section) => section.skill === "listening");
+  const writing = sections.find((section) => section.skill === "writing");
+
+  return (
+    <>
+      <p className="eyebrow">Full IELTS practice</p>
+      <h2>Reading, Listening, Writing</h2>
+      <p className="muted">{content.instructions || "Complete each section and submit all answers at the end."}</p>
+      <div className="full-test-sections">
+        <section>
+          <Badge tone="reading">Reading</Badge>
+          <h3>{reading?.title || "Reading section"}</h3>
+          <div className="passage-content" dangerouslySetInnerHTML={{ __html: sanitizeTeacherHtml(reading?.passage_html || content.passage_html || "") }} />
+        </section>
+        <section>
+          <Badge tone="listening">Listening</Badge>
+          <h3>{listening?.title || "Listening section"}</h3>
+          {listening?.audio_url || content.audio_url ? <audio controls src={listening?.audio_url || content.audio_url} className="audio-player" /> : <p className="form-error">No listening audio is attached.</p>}
+        </section>
+        <section>
+          <Badge tone="writing">Writing</Badge>
+          <h3>{writing?.title || "Writing section"}</h3>
+          <p>{writing?.prompt || content.prompt || "Your teacher has not added a writing prompt yet."}</p>
+        </section>
+      </div>
+    </>
+  );
+}
+
+function writingPrompt(content: TaskContent) {
+  return content.prompt || content.sections?.some((section) => section.skill === "writing" && section.prompt);
 }
 
 function QuestionInput({ question, index }: { question: Question; index: number }) {

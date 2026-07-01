@@ -46,6 +46,7 @@ git diff --check
 - Verifies unauthenticated student protected routes redirect.
 - Verifies admin login page renders.
 - Verifies unauthenticated admin protected routes redirect.
+- Verifies new admin content routes (`/full-tests`, `/full-tests/new`) are protected.
 
 ## What Requires Live Manual QA
 
@@ -56,6 +57,8 @@ The following need real Vercel/Supabase env variables and production data:
 - Writing submission.
 - Admin Supabase Auth login.
 - Lesson create/publish/unpublish.
+- Full Test Builder save with real Supabase data.
+- Full Test JSON import with real Supabase data.
+- Listening audio upload to the `task-media` bucket.
 - Writing review save.
 - Student progress showing saved feedback.
-

@@ -102,7 +102,7 @@ try {
   });
 
   await check("admin protected routes redirect", async () => {
-    for (const route of ["/dashboard", "/students", "/lessons", "/submissions"]) {
+    for (const route of ["/dashboard", "/students", "/lessons", "/full-tests", "/full-tests/new", "/submissions"]) {
       const { response } = await get(`http://localhost:3001${route}`, { redirect: "manual" });
       if (![303, 307, 308].includes(response.status)) {
         throw new Error(`${route} returned ${response.status}, expected redirect`);

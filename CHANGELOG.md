@@ -10,4 +10,7 @@
 - Added Node-based smoke tests with `npm run test:smoke`.
 - Added QA documentation: `QA_AUDIT.md`, `QA_REPORT.md`, `TESTING.md`, and `DEPLOYMENT.md`.
 - Improved Vercel split deployment documentation and kept student/admin build selection through `LMS_APP_TARGET`.
-
+- Rebuilt admin `/lessons` into a Content Studio with skill overview, publish controls, task visibility matrix, and student preview links.
+- Added `/full-tests` library and `/full-tests/new` Full Test Builder with Reading, Listening, Writing, JSON import, and Supabase Storage audio upload support.
+- Added `docs/FULL_TEST_IMPORT.md` for the full-test JSON schema and publishing workflow.
+- Updated the student test player to render full-test sections instead of treating them like reading-only tasks.
