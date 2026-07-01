@@ -1,9 +1,9 @@
 import "server-only";
 
 import crypto from "node:crypto";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
-import type { StudentSession } from "@ielts-pro/shared";
+import { createServerSupabaseClient, validateStudentDeviceSession, type StudentSession } from "@ielts-pro/shared";
 
 const COOKIE_NAME = "ielts_student_session";
 
@@ -43,10 +43,33 @@ export async function getStudentSession() {
 export async function requireStudentSession() {
   const session = await getStudentSession();
   if (!session) redirect("/");
+  if (!session.device_session_id || !session.session_token) {
+    await clearStudentSession();
+    redirect("/?error=session-expired");
+  }
+  const requestHeaders = await headers();
+  const valid = await validateStudentDeviceSession(createServerSupabaseClient(), {
+    studentId: session.id,
+    deviceSessionId: session.device_session_id,
+    sessionTokenHash: hashStudentSessionToken(session.session_token),
+    userAgent: requestHeaders.get("user-agent")
+  });
+  if (!valid) {
+    await clearStudentSession();
+    redirect("/?error=session-revoked");
+  }
   return session;
 }
 
 export async function clearStudentSession() {
   const jar = await cookies();
   jar.delete(COOKIE_NAME);
+}
+
+export function createStudentSessionToken() {
+  return crypto.randomBytes(32).toString("base64url");
+}
+
+export function hashStudentSessionToken(token: string) {
+  return crypto.createHash("sha256").update(token).digest("hex");
 }

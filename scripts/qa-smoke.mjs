@@ -82,12 +82,12 @@ try {
 
   await check("student login renders", async () => {
     const { text } = await get("http://localhost:3000");
-    expectIncludes(text, "Student login", "student login");
-    expectIncludes(text, "Open practice room", "student login");
+    expectIncludes(text, "Student access", "student login");
+    expectIncludes(text, "Enter Student Portal", "student login");
   });
 
   await check("student protected routes redirect", async () => {
-    for (const route of ["/dashboard", "/practice", "/practice/reading", "/practice/listening", "/practice/writing", "/practice/full-tests", "/progress", "/tests/smoke-task"]) {
+    for (const route of ["/dashboard", "/practice", "/practice/reading", "/practice/listening", "/practice/writing", "/practice/full-tests", "/profile", "/progress", "/tests/smoke-task"]) {
       const { response } = await get(`http://localhost:3000${route}`, { redirect: "manual" });
       if (![303, 307, 308].includes(response.status)) {
         throw new Error(`${route} returned ${response.status}, expected redirect`);

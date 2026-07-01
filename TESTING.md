@@ -45,6 +45,7 @@ git diff --check
 - Verifies student login page renders.
 - Verifies unauthenticated student protected routes redirect.
 - Verifies unauthenticated student practice routes (`/practice` and skill pages) redirect.
+- Verifies private student login copy renders without public signup/auth CTAs.
 - Verifies admin login page renders.
 - Verifies unauthenticated admin protected routes redirect.
 - Verifies new admin content routes (`/full-tests`, `/full-tests/new`) are protected.
@@ -55,6 +56,10 @@ The following need real Vercel/Supabase env variables and production data:
 
 - Student login with real student ID.
 - Student `/practice` and `/practice/[skill]` with real published tasks.
+- Student Access ID creation from admin `/students`.
+- Open/close access behavior.
+- Device session row creation and revocation.
+- Student `/profile` device session display.
 - Reading/listening/full-test answer submission.
 - Writing submission and live word-count behavior.
 - Admin Supabase Auth login.
@@ -64,3 +69,7 @@ The following need real Vercel/Supabase env variables and production data:
 - Listening audio upload to the `task-media` bucket.
 - Writing review save.
 - Student progress showing saved feedback.
+
+## Student Access Auth QA
+
+See `STUDENT_AUTH_QA_REPORT.md`.

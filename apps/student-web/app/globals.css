@@ -1,13 +1,13 @@
 :root {
   color-scheme: light;
-  --ink: #111827;
-  --muted: #667085;
-  --line: #d7e0ed;
+  --ink: #dbeafe;
+  --muted: #91a4c7;
+  --line: rgba(148, 163, 184, .22);
   --paper: #ffffff;
-  --wash: #eef3fb;
-  --navy: #13213b;
-  --blue: #0f6fbf;
-  --blue-dark: #0b4f87;
+  --wash: #08111f;
+  --navy: #07111f;
+  --blue: #22a7f2;
+  --blue-dark: #7dd3fc;
   --amber: #f2a413;
   --teal: #0f9f6e;
   --violet: #7c3aed;
@@ -21,8 +21,12 @@ html { scroll-behavior: smooth; }
 body {
   margin: 0;
   background:
-    radial-gradient(circle at 12% 0%, rgba(15, 111, 191, .12), transparent 28%),
-    linear-gradient(180deg, #f8fbff 0%, var(--wash) 46%, #f6f8fc 100%);
+    linear-gradient(rgba(125, 211, 252, .045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(125, 211, 252, .045) 1px, transparent 1px),
+    radial-gradient(circle at 18% 0%, rgba(34, 167, 242, .24), transparent 32%),
+    radial-gradient(circle at 90% 12%, rgba(124, 58, 237, .18), transparent 30%),
+    linear-gradient(180deg, #07111f 0%, #0b1628 48%, #0d1522 100%);
+  background-size: 44px 44px, 44px 44px, auto, auto, auto;
   color: var(--ink);
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
@@ -47,24 +51,25 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
   white-space: nowrap;
 }
 .btn:hover { transform: translateY(-1px); }
-.btn-primary { background: var(--blue); color: #fff; box-shadow: 0 10px 22px rgba(15, 111, 191, .18); }
-.btn-primary:hover { background: var(--blue-dark); }
-.btn-secondary { background: #e8f1ff; color: #0b4f87; border: 1px solid #c8ddf8; }
+.btn-primary { background: linear-gradient(135deg, #1d9bf0, #21d4fd); color: #04111f; box-shadow: 0 16px 34px rgba(34, 167, 242, .2); }
+.btn-primary:hover { background: linear-gradient(135deg, #37b7ff, #67e8f9); }
+.btn-secondary { background: rgba(255,255,255,.08); color: #dbeafe; border: 1px solid rgba(125, 211, 252, .24); }
 .btn-ghost { background: transparent; color: var(--muted); }
 .btn-danger { background: var(--rose); color: #fff; }
 
 .card {
-  background: rgba(255,255,255,.92);
+  background: rgba(15, 23, 42, .78);
   border: 1px solid var(--line);
   border-radius: 8px;
   box-shadow: var(--soft-shadow);
+  backdrop-filter: blur(18px);
 }
 .field {
   width: 100%;
   border: 1px solid var(--line);
   border-radius: 10px;
-  background: #fff;
-  color: var(--ink);
+  background: rgba(2, 6, 23, .62);
+  color: #e0f2fe;
   padding: 12px 13px;
 }
 .textarea { min-height: 240px; resize: vertical; line-height: 1.7; }
@@ -101,9 +106,9 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
   border: 1px dashed var(--line);
   border-radius: 8px;
   color: var(--muted);
-  background: #fff;
+  background: rgba(15, 23, 42, .78);
 }
-.empty-state h3, .error-state strong { color: var(--ink); margin: 0 0 6px; display: block; }
+.empty-state h3, .error-state strong { color: #e0f2fe; margin: 0 0 6px; display: block; }
 .empty-mark {
   margin: 0 auto 12px;
   width: 54px;
@@ -133,6 +138,11 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
   font-size: clamp(44px, 7vw, 86px);
   line-height: .93;
   letter-spacing: 0;
+  color: #e0f2fe;
+  background: linear-gradient(135deg, #ffffff, #7dd3fc 46%, #38bdf8);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 .login-hero p { max-width: 620px; color: var(--muted); font-size: 18px; line-height: 1.7; }
 .login-skill-strip { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 24px; }
@@ -149,7 +159,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
   max-width: 520px;
   border: 1px solid rgba(15,111,191,.18);
   border-radius: 8px;
-  background: rgba(255,255,255,.72);
+  background: rgba(15, 23, 42, .68);
   box-shadow: var(--shadow);
   padding: 14px;
   backdrop-filter: blur(16px);
@@ -175,8 +185,8 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
   font-weight: 950;
 }
 .study-row i { height: 7px; border-radius: 999px; background: linear-gradient(90deg, var(--blue), var(--amber)); }
-.study-row b { color: var(--ink); font-size: 13px; }
-.login-card { padding: 30px; box-shadow: var(--shadow); }
+.study-row b { color: #e0f2fe; font-size: 13px; }
+.login-card { padding: 30px; box-shadow: var(--shadow); border-color: rgba(125, 211, 252, .28); }
 .login-card h2 { margin: 0; font-size: 30px; letter-spacing: 0; }
 .form-stack { display: grid; gap: 16px; margin-top: 20px; }
 .form-stack label { display: grid; gap: 8px; font-size: 13px; font-weight: 850; }
@@ -185,7 +195,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
   position: sticky;
   top: 0;
   z-index: 20;
-  background: rgba(248, 251, 255, .86);
+  background: rgba(7, 17, 31, .84);
   backdrop-filter: blur(18px);
   border-bottom: 1px solid var(--line);
 }
@@ -205,7 +215,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
 .student-nav a:hover, .student-nav button:hover { color: var(--ink); background: #fff; }
 .student-chip {
   border: 1px solid var(--line);
-  background: #fff;
+  background: rgba(15, 23, 42, .78);
   border-radius: 999px;
   padding: 8px 12px;
   color: var(--muted);
@@ -221,7 +231,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
   align-items: center;
   margin-bottom: 18px;
   background:
-    linear-gradient(135deg, rgba(19,33,59,.96), rgba(20,55,114,.95)),
+    linear-gradient(135deg, rgba(7,17,31,.98), rgba(12,74,110,.84)),
     var(--navy);
   color: #fff;
   overflow: hidden;
@@ -311,7 +321,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
   align-items: center;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #fff;
+  background: rgba(15, 23, 42, .76);
   padding: 28px;
   box-shadow: var(--soft-shadow);
   margin-bottom: 18px;
@@ -326,7 +336,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
 .practice-score {
   border: 1px solid #dce6f4;
   border-radius: 8px;
-  background: #f7fbff;
+  background: rgba(2, 6, 23, .5);
   padding: 18px;
   display: grid;
   gap: 8px;
@@ -344,7 +354,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
   border: 1px solid var(--line);
   border-top: 5px solid var(--blue);
   border-radius: 8px;
-  background: #fff;
+  background: rgba(15, 23, 42, .78);
   padding: 18px;
   min-height: 170px;
   display: grid;
@@ -362,7 +372,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
 .practice-skill-link.skill-writing { border-top-color: var(--violet); }
 .practice-skill-link.skill-full { border-top-color: var(--teal); }
 .skill-page-hero {
-  background: linear-gradient(135deg, #fff, #f5f9ff);
+  background: linear-gradient(135deg, rgba(15,23,42,.9), rgba(12,74,110,.48));
   border-left: 6px solid var(--blue);
 }
 .skill-page-listening { border-left-color: var(--amber); }
@@ -383,7 +393,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
 }
 .filter-strip span {
   border: 1px solid var(--line);
-  background: #fff;
+  background: rgba(2, 6, 23, .46);
   border-radius: 999px;
   padding: 8px 11px;
   color: var(--muted);
@@ -399,7 +409,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
 .task-meta-grid div {
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #fff;
+  background: rgba(15, 23, 42, .72);
   padding: 16px;
   display: grid;
   gap: 4px;
@@ -473,7 +483,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
   padding: 7px 10px;
 }
 .option-row { display: flex; align-items: flex-start; gap: 9px; padding: 7px 8px; border-radius: 8px; }
-.option-row:hover { background: #eef6ff; }
+.option-row:hover { background: rgba(34, 167, 242, .1); }
 .option-row input { margin-top: 3px; }
 .writing-box { display: grid; gap: 8px; font-weight: 850; }
 .writing-meter {
@@ -519,6 +529,43 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
 }
 .submitted-panel h2 { margin: 10px 0 6px; }
 
+.profile-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 24px;
+  align-items: center;
+  border: 1px solid rgba(125, 211, 252, .22);
+  border-radius: 8px;
+  background:
+    radial-gradient(circle at 85% 10%, rgba(34,167,242,.18), transparent 34%),
+    rgba(15, 23, 42, .78);
+  padding: 30px;
+  margin-bottom: 18px;
+  box-shadow: var(--shadow);
+}
+.profile-hero h1 {
+  margin: 0 0 10px;
+  font-size: clamp(42px, 6vw, 78px);
+  line-height: .92;
+  letter-spacing: 0;
+}
+.profile-hero p { color: var(--muted); line-height: 1.65; }
+.profile-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+.access-pass {
+  border: 1px solid rgba(125,211,252,.28);
+  border-radius: 8px;
+  background: rgba(2, 6, 23, .52);
+  padding: 18px;
+  display: grid;
+  gap: 8px;
+}
+.access-pass span, .access-pass small { color: var(--muted); font-weight: 850; }
+.access-pass strong { font-size: 34px; color: #e0f2fe; letter-spacing: .08em; }
+.device-stack { display: grid; gap: 12px; }
+.profile-device { padding: 14px; display: grid; gap: 7px; }
+.profile-device strong { color: #e0f2fe; }
+.profile-device small { color: var(--muted); }
+
 @media (max-width: 1040px) {
   .exam-layout { grid-template-columns: 1fr; }
   .passage { max-height: none; }
@@ -526,7 +573,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
 }
 
 @media (max-width: 880px) {
-  .login-screen, .hero-card, .content-grid, .practice-hero, .skill-page-hero { grid-template-columns: 1fr; }
+  .login-screen, .hero-card, .content-grid, .practice-hero, .skill-page-hero, .profile-hero { grid-template-columns: 1fr; }
   .stats-grid, .skill-grid, .practice-skills { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .student-topbar-inner { grid-template-columns: 1fr; justify-items: start; }
   .student-nav { justify-content: flex-start; flex-wrap: wrap; }

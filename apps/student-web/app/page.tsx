@@ -1,18 +1,30 @@
 "use client";
 
+import { Suspense } from "react";
 import { useActionState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Button, Card, Input } from "@ielts-pro/ui";
 import { studentLogin } from "./actions/auth";
 
 export default function StudentLoginPage() {
+  return (
+    <Suspense fallback={<main className="login-screen" />}>
+      <StudentLoginForm />
+    </Suspense>
+  );
+}
+
+function StudentLoginForm() {
   const [state, action, pending] = useActionState(studentLogin, undefined);
+  const searchParams = useSearchParams();
+  const sessionError = searchParams.get("error");
   return (
     <main className="login-screen">
       <section className="login-hero">
-        <p className="eyebrow">IELTS Pro student portal</p>
-        <h1>Train each IELTS skill with a clear path to feedback.</h1>
+        <p className="eyebrow">Private IELTS Pro portal</p>
+        <h1>Enter your teacher-issued IELTS workspace.</h1>
         <p>
-          Open teacher-published practice, complete Reading and Listening tasks, submit Writing responses, and follow your results from one focused workspace.
+          This is a closed learning portal. Access is created by your teacher, then protected with a private Student Access ID and device session checks.
         </p>
         <div className="login-skill-strip" aria-label="IELTS skills">
           <span>Reading</span>
@@ -31,20 +43,22 @@ export default function StudentLoginPage() {
         </div>
       </section>
       <Card className="login-card">
-        <p className="eyebrow">Assigned access</p>
-        <h2>Student login</h2>
-        <p className="muted">Use the name and student ID from your teacher.</p>
+        <p className="eyebrow">Teacher-issued access</p>
+        <h2>Student access</h2>
+        <p className="muted">Use your full name and Student Access ID. There is no public signup or free trial.</p>
         <form action={action} className="form-stack">
           <label>
             Full Name
             <Input name="name" autoComplete="name" placeholder="Miravzal S" required />
           </label>
           <label>
-            Student ID
+            Student Access ID
             <Input name="code" inputMode="numeric" autoComplete="one-time-code" placeholder="1111111" required />
           </label>
+          {sessionError === "session-revoked" ? <p className="form-error">This device session was revoked or your access was closed. Contact your teacher.</p> : null}
+          {sessionError === "session-expired" ? <p className="form-error">Your session expired. Enter your Student Access ID again.</p> : null}
           {state?.error ? <p className="form-error">{state.error}</p> : null}
-          <Button disabled={pending}>{pending ? "Checking…" : "Open practice room"}</Button>
+          <Button disabled={pending}>{pending ? "Checking..." : "Enter Student Portal"}</Button>
         </form>
       </Card>
     </main>

@@ -9,6 +9,9 @@ Date: 2026-07-01
 - `web-design-guidelines`: used for accessibility and interface audit checks.
 - `nextjs-best-practices`: used for App Router route/action boundaries and Vercel build checks.
 - `supabase`: used for server-only Supabase Storage upload and Data API safety checks.
+- `supabase-postgres-best-practices`: used for indexes and RLS-aware device session migration design.
+- `vercel-react-best-practices`: used to keep auth/session checks server-side and avoid broad client rewrites.
+- `vercel-composition-patterns`: used to keep reusable UI changes scoped instead of adding brittle auth-specific variants.
 - `webapp-testing`: used to define the local browser QA workflow and smoke coverage expectations.
 
 ## Reference Review
@@ -70,6 +73,10 @@ Additional browser QA in this pass:
 - Student dashboard skill cards now open real skill pages instead of acting as static cards.
 - Student writing answers now show live word count and target progress.
 - Full-test section questions are flattened consistently for rendering and grading.
+- Private Student Access ID login replaces generic login copy.
+- Student sessions are now backed by hashed device session rows.
+- Admin `/students` can manage access status and revoke devices.
+- Student `/profile` shows masked access and device status.
 
 ## Manual Live Checks Still Required
 
@@ -92,8 +99,13 @@ These require production Supabase env values and real seeded data:
 15. Review a writing submission and save score/feedback.
 16. Confirm student `/progress` shows the teacher feedback.
 17. Open `/practice` and each skill page with real data.
-18. Confirm unpublished task direct URL returns blocked/not found.
+18. Apply `supabase/migrations/20260701183000_student_access_device_sessions.sql`.
+19. Create a Student Access ID from admin `/students`.
+20. Confirm login succeeds with open access.
+21. Confirm closed access cannot log in.
+22. Revoke a device and confirm that browser is forced back to login.
+23. Confirm unpublished task direct URL returns blocked/not found.
 
 ## Result
 
-The UI is now substantially more premium and IELTS-specific. Full-test creation, split skill JSON import, student section rendering, skill practice pages, inline completion blanks, live writing word count, and server-side audio upload support are implemented. Remaining high-value work: add existing-test edit/reorder screens and run production Supabase smoke checks after deployment.
+The UI is now substantially more premium and IELTS-specific. Full-test creation, split skill JSON import, student section rendering, skill practice pages, inline completion blanks, live writing word count, private access login, hashed device sessions, admin device revocation, and server-side audio upload support are implemented. Remaining high-value work: add existing-test edit/reorder screens and run production Supabase smoke checks after applying the new migration.

@@ -21,3 +21,9 @@
 - Linked dashboard skill cards to their real practice pages.
 - Added live writing word count and target progress in the student test player.
 - Flattened full-test section questions for consistent student rendering and grading.
+- Reworked student login into a private teacher-issued Student Access ID flow with Bolt-style dark navy visual direction.
+- Added hashed student device sessions and protected-route session revocation checks.
+- Added admin Student Access management for creating IDs, opening/closing access, and kicking devices.
+- Added student `/profile` with masked access ID, progress stats, and device sessions.
+- Added Supabase migration for student access status and device session tables.
+- Added `STUDENT_AUTH_REDESIGN_AUDIT.md` and `STUDENT_AUTH_QA_REPORT.md`.

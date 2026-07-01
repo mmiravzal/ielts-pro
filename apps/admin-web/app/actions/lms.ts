@@ -6,8 +6,12 @@ import { redirect } from "next/navigation";
 import {
   createLesson,
   createServerSupabaseClient,
+  createStudentAccess,
   createTask,
+  revokeAllStudentDeviceSessions,
+  revokeStudentDeviceSession,
   reviewWritingSubmission,
+  setStudentAccessStatus,
   updateLesson,
   type Question,
   type TaskContent
@@ -29,6 +33,47 @@ export async function createLessonAction(formData: FormData) {
   });
   revalidatePath("/lessons");
   revalidatePath("/dashboard");
+}
+
+export async function createStudentAccessAction(formData: FormData) {
+  await requireAdminSession();
+  const name = text(formData, "name");
+  const accessId = text(formData, "access_id");
+  const maxDevicesValue = text(formData, "max_devices");
+  if (!name || !accessId) return;
+  await createStudentAccess(createServerSupabaseClient(), {
+    name,
+    accessId,
+    maxDevices: maxDevicesValue ? Number(maxDevicesValue) : null
+  });
+  revalidatePath("/students");
+}
+
+export async function toggleStudentAccessAction(formData: FormData) {
+  const admin = await requireAdminSession();
+  const studentId = text(formData, "student_id");
+  const open = text(formData, "open") === "true";
+  if (!studentId) return;
+  const supabase = createServerSupabaseClient();
+  await setStudentAccessStatus(supabase, studentId, open);
+  if (!open) await revokeAllStudentDeviceSessions(supabase, studentId, admin.email);
+  revalidatePath("/students");
+}
+
+export async function revokeDeviceSessionAction(formData: FormData) {
+  const admin = await requireAdminSession();
+  const sessionId = text(formData, "session_id");
+  if (!sessionId) return;
+  await revokeStudentDeviceSession(createServerSupabaseClient(), sessionId, admin.email);
+  revalidatePath("/students");
+}
+
+export async function revokeAllDevicesAction(formData: FormData) {
+  const admin = await requireAdminSession();
+  const studentId = text(formData, "student_id");
+  if (!studentId) return;
+  await revokeAllStudentDeviceSessions(createServerSupabaseClient(), studentId, admin.email);
+  revalidatePath("/students");
 }
 
 export async function createFullTestDraftAction(formData: FormData) {

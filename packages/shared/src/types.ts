@@ -11,7 +11,12 @@ export type Student = {
   name: string;
   student_code: string;
   group_id: string | null;
+  is_active?: boolean | null;
+  access_status?: "open" | "closed" | string | null;
+  max_devices?: number | null;
+  last_login_at?: string | null;
   created_at?: string;
+  updated_at?: string;
   groups?: Pick<Group, "name"> | null;
 };
 
@@ -59,6 +64,22 @@ export type Submission = {
   tasks?: (Pick<Task, "title" | "skill"> & { lessons?: Pick<Lesson, "title"> | null }) | null;
 };
 
+export type StudentDeviceSession = {
+  id: string;
+  student_id: string;
+  device_label: string | null;
+  user_agent: string | null;
+  device_fingerprint_hash: string | null;
+  session_token_hash: string;
+  is_active: boolean | null;
+  revoked_at: string | null;
+  revoked_by: string | null;
+  revoked_by_email?: string | null;
+  last_seen_at: string;
+  created_at: string;
+  students?: Pick<Student, "name" | "student_code"> | null;
+};
+
 export type Question = {
   type: string;
   question?: string;
@@ -93,5 +114,8 @@ export type TaskContent = {
   questions?: Question[];
 };
 
-export type StudentSession = Pick<Student, "id" | "name" | "student_code" | "group_id">;
+export type StudentSession = Pick<Student, "id" | "name" | "student_code" | "group_id"> & {
+  device_session_id: string;
+  session_token: string;
+};
 export type AdminSession = { id: string; email: string };

@@ -4,7 +4,7 @@ Date: 2026-07-01
 
 ## Scope
 
-- Student app: `/`, `/dashboard`, `/practice`, `/practice/[skill]`, `/progress`, `/tests/[taskId]`
+- Student app: `/`, `/dashboard`, `/practice`, `/practice/[skill]`, `/profile`, `/progress`, `/tests/[taskId]`
 - Admin app: `/`, `/dashboard`, `/students`, `/lessons`, `/full-tests`, `/full-tests/new`, `/submissions`
 - Shared packages: Supabase data layer, UI components, Vercel build selector
 - Reference benchmark: `https://ieltsulugbeks.com/` inspected for IELTS-focused UX patterns, skill cards, test-taking chrome, and result/progress structure. No brand assets, copy, logo, or exact layout were copied.
@@ -21,6 +21,8 @@ Date: 2026-07-01
 | P1 | Student/admin route protection | `apps/*/lib/session.ts` | Protected routes must not load without signed cookie. | Visit protected routes unauthenticated. | Redirect to login. | Redirect enforced before Supabase access. | Automated in `test:smoke`. |
 | P2 | Writing word count | `apps/student-web/app/components/WritingAnswerBox.tsx` | Writing editor should show word count and target progress. | Open a writing task and type. | Word count updates live. | Client component updates locally. | Fixed in this pass. |
 | P1 | Skill practice flow | `apps/student-web/app/practice/*` | Student skill cards need real navigation and skill-specific practice lists. | Click Dashboard skill cards. | Opens Reading/Listening/Writing/Full Tests lists. | Dedicated routes filter published tasks by skill. | Fixed in this pass. |
+| P1 | Private access session revocation | `apps/student-web/lib/session.ts`, `student_device_sessions` | Signed cookie alone cannot be kicked by admin. | Revoke a device session. | Revoked device is blocked on next protected route. | Protected routes validate DB session hash and access status. | Fixed; requires new Supabase migration. |
+| P1 | Admin student access management | `apps/admin-web/app/students/page.tsx` | Admin roster was read-only and could not open/close IDs or kick devices. | Open `/students`. | Create IDs, close/open access, revoke one/all devices. | Student Access UI and actions added. | Fixed; requires new Supabase migration. |
 | P1 | Full test creation | `apps/admin-web/app/full-tests/new/page.tsx` | Admin needed a real full-test builder instead of only lesson shells. | Open `/full-tests/new`. | Create full IELTS practice with Reading, Listening, Writing, audio, and JSON import. | Missing before this pass. | Added Full Test Builder, JSON import, and server-side Supabase Storage upload path. |
 | P1 | Student full-test view | `apps/student-web/app/tests/[taskId]/page.tsx` | Full tests should not render as simple reading-only tasks. | Open a published full-test task. | Student sees Reading, Listening, and Writing sections. | Previously fell through to reading-style layout. | Added full-test section rendering and writing response capture. |
 | P1 | Full-test section grading | `apps/student-web/app/actions/attempts.ts` | Full-test JSON can store questions inside `sections`, but grading only read top-level questions. | Submit imported section-based full test. | Section questions render and grade. | Top-level-only grading would miss answers. | Fixed by flattening top-level and section questions consistently. |
@@ -35,4 +37,7 @@ Date: 2026-07-01
 - Student sessions and admin sessions use signed HTTP-only cookies.
 - Admin allow-list is enforced through `ADMIN_EMAILS`.
 - Listening audio upload is handled in server actions only; `SUPABASE_SERVICE_ROLE_KEY` is not exposed to client code.
+- Student device session token is stored raw only in the HTTP-only signed cookie; Supabase stores the SHA-256 hash.
+- Student Access ID uses the existing unique `students.student_code` field to preserve production data.
 - RLS migration draft exists at `supabase/migrations/20260630190000_harden_lms_access.sql`; it still requires manual Supabase application after production smoke testing.
+- Student access/device session migration exists at `supabase/migrations/20260701183000_student_access_device_sessions.sql`; apply it before using revocation in production.

@@ -18,6 +18,10 @@ Environment variables:
 
 Do not set `LMS_APP_TARGET` for the student project. It defaults to `student`.
 
+Before enabling the new private access login in production, apply:
+
+- `supabase/migrations/20260701183000_student_access_device_sessions.sql`
+
 ## Admin Project
 
 - Root directory: `./`
@@ -41,6 +45,8 @@ Student:
 
 - `/` loads the premium student login.
 - Student login works with a real student.
+- Invalid or closed Student Access ID is rejected.
+- Revoked device session redirects back to login.
 - `/dashboard` shows published tests only.
 - `/practice` opens the skill selection page.
 - `/practice/reading`, `/practice/listening`, `/practice/writing`, and `/practice/full-tests` show the correct published tasks.
@@ -55,6 +61,8 @@ Admin:
 - `/` loads the teacher login.
 - Admin auth works for an email in `ADMIN_EMAILS`.
 - `/dashboard`, `/students`, `/lessons`, `/submissions` load.
+- `/students` can create/open/close Student Access IDs.
+- `/students` shows active/revoked device sessions and can kick a device.
 - `/full-tests` and `/full-tests/new` load.
 - Full Test Builder can save a draft and optional listening audio upload.
 - JSON import creates a full-test lesson and task.
@@ -66,5 +74,6 @@ Admin:
 After the Next apps are confirmed in production, apply and verify:
 
 - `supabase/migrations/20260630190000_harden_lms_access.sql`
+- `supabase/migrations/20260701183000_student_access_device_sessions.sql`
 
 Rotate any service role key that was pasted into chat or shared outside Vercel/Supabase secret storage.
