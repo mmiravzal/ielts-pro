@@ -11,7 +11,11 @@ export default async function SubmissionsPage() {
   return (
     <AdminShell email={admin.email}>
       <div className="page-head">
-        <div><p className="eyebrow">Review</p><h1>Writing Submissions</h1></div>
+        <div>
+          <p className="eyebrow">Review queue</p>
+          <h1>Writing submissions</h1>
+          <p className="muted">Read student responses, assign a band, and leave clear next-step feedback.</p>
+        </div>
       </div>
       <div className="lesson-list">
         {writing.map((submission) => (
@@ -28,7 +32,7 @@ export default async function SubmissionsPage() {
               <input type="hidden" name="id" value={submission.id} />
               <label>Band Score<Input name="score" type="number" min="1" max="9" step="0.5" defaultValue={submission.score ?? ""} /></label>
               <label>Teacher Feedback<Textarea name="feedback" defaultValue={submission.feedback ?? ""} /></label>
-              <Button>Save Review</Button>
+              <Button>Save review</Button>
             </form>
           </Card>
         ))}

@@ -9,14 +9,21 @@ export default function StudentLoginPage() {
   return (
     <main className="login-screen">
       <section className="login-hero">
-        <p className="eyebrow">IELTS Pro</p>
-        <h1>Practice room for serious IELTS progress.</h1>
+        <p className="eyebrow">IELTS Pro student portal</p>
+        <h1>Train each IELTS skill with a clear path to feedback.</h1>
         <p>
-          See assigned tests, complete reading and listening work, submit writing, and track teacher feedback from one clean dashboard.
+          Open teacher-published practice, complete Reading and Listening tasks, submit Writing responses, and follow your results from one focused workspace.
         </p>
+        <div className="login-skill-strip" aria-label="IELTS skills">
+          <span>Reading</span>
+          <span>Listening</span>
+          <span>Writing</span>
+          <span>Full tests</span>
+        </div>
       </section>
       <Card className="login-card">
-        <h2>Student Login</h2>
+        <p className="eyebrow">Assigned access</p>
+        <h2>Student login</h2>
         <p className="muted">Use the name and student ID from your teacher.</p>
         <form action={action} className="form-stack">
           <label>
@@ -28,7 +35,7 @@ export default function StudentLoginPage() {
             <Input name="code" inputMode="numeric" autoComplete="one-time-code" placeholder="1111111" required />
           </label>
           {state?.error ? <p className="form-error">{state.error}</p> : null}
-          <Button disabled={pending}>{pending ? "Checking..." : "Open Dashboard"}</Button>
+          <Button disabled={pending}>{pending ? "Checking..." : "Open practice room"}</Button>
         </form>
       </Card>
     </main>

@@ -10,8 +10,8 @@ export default function AdminLoginPage() {
     <main className="admin-login">
       <Card className="admin-login-card">
         <p className="eyebrow">Teacher workspace</p>
-        <h1>Manage IELTS Pro</h1>
-        <p className="muted">Create lessons, publish tests, and review writing submissions.</p>
+        <h1>Run the IELTS classroom</h1>
+        <p className="muted">Publish practice, monitor students, and review writing from one protected admin panel.</p>
         <form action={action} className="form-stack">
           <label>
             Admin Email
@@ -22,7 +22,7 @@ export default function AdminLoginPage() {
             <Input name="password" type="password" autoComplete="current-password" required />
           </label>
           {state?.error ? <p className="form-error">{state.error}</p> : null}
-          <Button disabled={pending}>{pending ? "Signing in..." : "Open Admin"}</Button>
+          <Button disabled={pending}>{pending ? "Signing in..." : "Open teacher panel"}</Button>
         </form>
       </Card>
     </main>

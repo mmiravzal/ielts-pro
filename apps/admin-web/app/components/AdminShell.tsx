@@ -13,15 +13,18 @@ export function AdminShell({ email, children }: { email: string; children: React
 function Sidebar({ email }: { email: string }) {
   return (
     <>
-      <div className="sidebar-brand">IELTS <span>Pro</span></div>
+      <div>
+        <div className="sidebar-brand">IELTS <span>Pro</span></div>
+        <p className="sidebar-kicker">Teacher operations</p>
+      </div>
       <nav aria-label="Admin navigation">
         <Link href="/dashboard">Dashboard</Link>
         <Link href="/students">Students</Link>
         <Link href="/lessons">Lessons & Tests</Link>
         <Link href="/submissions">Writing Review</Link>
       </nav>
-      <div style={{ marginTop: "auto" }}>
-        <p style={{ color: "rgba(255,255,255,.52)", fontSize: 13 }}>{email}</p>
+      <div className="sidebar-user">
+        <p>{email}</p>
         <form action={adminLogout}><button className="btn btn-ghost">Logout</button></form>
       </div>
     </>

@@ -13,7 +13,11 @@ export default async function LessonsPage() {
   return (
     <AdminShell email={admin.email}>
       <div className="page-head">
-        <div><p className="eyebrow">Content</p><h1>Lessons & Tests</h1></div>
+        <div>
+          <p className="eyebrow">Content studio</p>
+          <h1>Lessons and tests</h1>
+          <p className="muted">Publish only the practice that students should see in their portal.</p>
+        </div>
       </div>
       <div className="panel-grid">
         <section className="lesson-list">
@@ -23,7 +27,7 @@ export default async function LessonsPage() {
                 <Badge tone={lesson.published ? "success" : "warning"}>{lesson.published ? "Published" : "Draft"}</Badge>
                 <h2>{lesson.title}</h2>
                 <p className="muted">{lesson.description || "No description"}</p>
-                <p>{tasks.filter((task) => task.lesson_id === lesson.id).length} tasks</p>
+                <p className="lesson-meta">{tasks.filter((task) => task.lesson_id === lesson.id).length} tasks assigned</p>
               </div>
               <form action={toggleLessonPublishAction}>
                 <input type="hidden" name="id" value={lesson.id} />
@@ -35,7 +39,8 @@ export default async function LessonsPage() {
         </section>
 
         <Card className="panel">
-          <h2>Create Lesson</h2>
+          <p className="eyebrow">New lesson</p>
+          <h2>Create lesson</h2>
           <form action={createLessonAction} className="form-stack">
             <label>Title<Input name="title" required /></label>
             <label>Description<Textarea name="description" /></label>
@@ -43,7 +48,7 @@ export default async function LessonsPage() {
               <label>Skill<Select name="skill" defaultValue="reading"><option value="reading">Reading</option><option value="listening">Listening</option><option value="writing">Writing</option></Select></label>
               <label>Order<Input name="order" type="number" defaultValue={lessons.length + 1} /></label>
             </div>
-            <label style={{ display: "flex", gap: 8, alignItems: "center" }}><input type="checkbox" name="published" /> Publish now</label>
+            <label className="check-row"><input type="checkbox" name="published" /> Publish now</label>
             <Button>Create Lesson</Button>
           </form>
         </Card>

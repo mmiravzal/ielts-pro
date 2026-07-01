@@ -1,6 +1,7 @@
 import type { ComponentPropsWithoutRef, ReactNode } from "react";
 
 type Variant = "primary" | "secondary" | "ghost" | "danger";
+type BadgeTone = "neutral" | "reading" | "listening" | "writing" | "speaking" | "full" | "success" | "warning";
 
 export function Button({
   variant = "primary",
@@ -22,7 +23,7 @@ export function Card({ className = "", ...props }: ComponentPropsWithoutRef<"sec
   return <section className={`card ${className}`.trim()} {...props} />;
 }
 
-export function Badge({ tone = "neutral", children }: { tone?: "neutral" | "reading" | "listening" | "writing" | "success" | "warning"; children: ReactNode }) {
+export function Badge({ tone = "neutral", children }: { tone?: BadgeTone; children: ReactNode }) {
   return <span className={`badge badge-${tone}`}>{children}</span>;
 }
 
@@ -73,6 +74,47 @@ export function StatCard({ label, value, note }: { label: string; value: ReactNo
       <strong>{value}</strong>
       {note ? <small>{note}</small> : null}
     </Card>
+  );
+}
+
+export function TestCard({
+  title,
+  meta,
+  description,
+  tone = "neutral",
+  status,
+  action
+}: {
+  title: string;
+  meta: string;
+  description?: string;
+  tone?: BadgeTone;
+  status?: ReactNode;
+  action?: ReactNode;
+}) {
+  return (
+    <Card className={`test-card test-card-${tone}`}>
+      <div>
+        <div className="test-card-top">
+          <Badge tone={tone}>{meta}</Badge>
+          {status}
+        </div>
+        <h3>{title}</h3>
+        {description ? <p>{description}</p> : null}
+      </div>
+      {action ? <div className="test-card-action">{action}</div> : null}
+    </Card>
+  );
+}
+
+export function QuestionNavigator({ count }: { count: number }) {
+  if (count <= 0) return null;
+  return (
+    <nav className="question-nav" aria-label="Question navigator">
+      {Array.from({ length: count }).map((_, index) => (
+        <a href={`#question-${index + 1}`} key={index}>{index + 1}</a>
+      ))}
+    </nav>
   );
 }
 

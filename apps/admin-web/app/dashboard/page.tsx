@@ -14,7 +14,8 @@ export default async function AdminDashboardPage() {
       <div className="page-head">
         <div>
           <p className="eyebrow">Admin dashboard</p>
-          <h1>Teacher Control Room</h1>
+          <h1>Teacher control room</h1>
+          <p className="muted">Track the class, publish practice, and keep writing feedback moving.</p>
         </div>
         <Link className="btn btn-primary" href="/lessons">Create Content</Link>
       </div>
@@ -28,7 +29,13 @@ export default async function AdminDashboardPage() {
 
       <div className="panel-grid">
         <Card className="panel">
-          <h2>Recent Submissions</h2>
+          <div className="section-head">
+            <div>
+              <p className="eyebrow">Live activity</p>
+              <h2>Recent submissions</h2>
+            </div>
+            <Link href="/submissions">Open queue</Link>
+          </div>
           <Table>
             <thead><tr><th>Student</th><th>Task</th><th>Score</th><th>Date</th></tr></thead>
             <tbody>
@@ -44,8 +51,13 @@ export default async function AdminDashboardPage() {
           </Table>
         </Card>
         <Card className="panel">
-          <h2>Operating Notes</h2>
-          <p className="muted">Publish only reviewed lessons. Writing submissions without a score stay in the pending review queue.</p>
+          <p className="eyebrow">Today</p>
+          <h2>Operating notes</h2>
+          <div className="checklist">
+            <span>Review pending writing before the next lesson.</span>
+            <span>Keep draft tests unpublished until questions are checked.</span>
+            <span>Use results history to assign focused homework.</span>
+          </div>
           <Link href="/submissions" className="btn btn-secondary">Review Writing</Link>
         </Card>
       </div>

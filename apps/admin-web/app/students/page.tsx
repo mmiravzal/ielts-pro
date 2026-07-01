@@ -9,7 +9,11 @@ export default async function StudentsPage() {
   return (
     <AdminShell email={admin.email}>
       <div className="page-head">
-        <div><p className="eyebrow">Students</p><h1>Student Roster</h1></div>
+        <div>
+          <p className="eyebrow">Classroom</p>
+          <h1>Student roster</h1>
+          <p className="muted">Use this list to confirm student IDs and group membership.</p>
+        </div>
       </div>
       <Card className="panel">
         {students.length ? (

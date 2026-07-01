@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Badge, Card, EmptyState, LinkButton, ProgressBar, StatCard } from "@ielts-pro/ui";
+import { Badge, Card, EmptyState, LinkButton, ProgressBar, StatCard, TestCard } from "@ielts-pro/ui";
 import { createServerSupabaseClient, getPublishedTasks, getStudentSubmissions } from "@ielts-pro/shared";
 import { requireStudentSession } from "@/lib/session";
-import { studentLogout } from "../actions/auth";
+import { StudentShell } from "../components/StudentShell";
 
 export default async function DashboardPage() {
   const session = await requireStudentSession();
@@ -18,23 +18,37 @@ export default async function DashboardPage() {
   const writingPending = submissions.filter((submission) => submission.tasks?.skill === "writing" && submission.score == null).length;
 
   if (!session) redirect("/");
+  const readingCount = tasks.filter((task) => task.skill === "reading").length;
+  const listeningCount = tasks.filter((task) => task.skill === "listening").length;
+  const writingCount = tasks.filter((task) => task.skill === "writing").length;
 
   return (
-    <>
-      <Topbar name={session.name} />
+    <StudentShell name={session.name}>
       <main className="page">
         <Card className="hero-card">
           <div>
-            <p className="eyebrow">Student workspace</p>
-            <h1>Welcome, {session.name}</h1>
-            <p>Work through published IELTS practice, submit answers, and check teacher feedback without losing your place.</p>
+            <p className="eyebrow">Student practice plan</p>
+            <h1>Welcome back, {session.name}</h1>
+            <p>Choose a skill, complete published practice, and keep your result history ready for your teacher.</p>
+            <div className="hero-actions">
+              <LinkButton href="#practice">Start practice</LinkButton>
+              <LinkButton variant="secondary" href="/progress">View results</LinkButton>
+            </div>
           </div>
           <div className="hero-meter">
-            <span>Course progress</span>
+            <span>Overall completion</span>
             <strong>{progress}%</strong>
             <ProgressBar value={progress} label="Overall progress" />
+            <small>{completed}/{tasks.length || 0} tasks submitted</small>
           </div>
         </Card>
+
+        <section className="skill-grid" aria-label="IELTS skill categories">
+          <Card className="skill-card skill-reading"><span>Reading</span><strong>{readingCount}</strong><small>passage tasks</small></Card>
+          <Card className="skill-card skill-listening"><span>Listening</span><strong>{listeningCount}</strong><small>audio tasks</small></Card>
+          <Card className="skill-card skill-writing"><span>Writing</span><strong>{writingCount}</strong><small>teacher-reviewed</small></Card>
+          <Card className="skill-card skill-full"><span>Full tests</span><strong>{tasks.filter((task) => task.skill === "full_test").length}</strong><small>exam practice</small></Card>
+        </section>
 
         <section className="stats-grid" aria-label="Progress summary">
           <StatCard label="Available Tasks" value={tasks.length} note={`${lessons.length} published lessons`} />
@@ -44,27 +58,27 @@ export default async function DashboardPage() {
         </section>
 
         <div className="content-grid">
-          <section>
+          <section id="practice">
             <div className="section-head">
               <h2>Published Tests</h2>
               <Link href="/progress">View progress</Link>
             </div>
             <div className="test-list">
               {tasks.length ? tasks.map((task) => (
-                <Card className="test-card" key={task.id}>
-                  <div>
-                    <Badge tone={toneFor(task.skill)}>{labelFor(task.skill)}</Badge>
-                    <h3>{task.title}</h3>
-                    <p>{lessons.find((lesson) => lesson.id === task.lesson_id)?.title || "IELTS practice"}</p>
-                    {completedIds.has(task.id) ? <Badge tone="success">Submitted</Badge> : null}
-                  </div>
-                  <LinkButton href={`/tests/${task.id}`}>{completedIds.has(task.id) ? "Review" : "Start"}</LinkButton>
-                </Card>
+                <TestCard
+                  key={task.id}
+                  tone={toneFor(task.skill)}
+                  meta={labelFor(task.skill)}
+                  title={task.title}
+                  description={lessons.find((lesson) => lesson.id === task.lesson_id)?.title || "IELTS practice"}
+                  status={completedIds.has(task.id) ? <Badge tone="success">Submitted</Badge> : <Badge tone="warning">Open</Badge>}
+                  action={<LinkButton href={`/tests/${task.id}`}>{completedIds.has(task.id) ? "Review" : "Start"}</LinkButton>}
+                />
               )) : <EmptyState title="No published tests" body="Your teacher has not published practice work yet." />}
             </div>
           </section>
 
-          <aside>
+          <aside className="right-rail">
             <div className="section-head"><h2>Recent Attempts</h2></div>
             <div className="attempt-list">
               {submissions.slice(0, 6).map((submission) => (
@@ -79,22 +93,7 @@ export default async function DashboardPage() {
           </aside>
         </div>
       </main>
-    </>
-  );
-}
-
-function Topbar({ name }: { name: string }) {
-  return (
-    <header className="topbar">
-      <div className="topbar-inner">
-        <Link className="brand" href="/dashboard">IELTS <span>Pro</span></Link>
-        <nav className="nav" aria-label="Student navigation">
-          <Link href="/dashboard">Dashboard</Link>
-          <Link href="/progress">Progress</Link>
-          <form action={studentLogout}><button className="btn btn-ghost">Logout {name}</button></form>
-        </nav>
-      </div>
-    </header>
+    </StudentShell>
   );
 }
 
@@ -102,6 +101,7 @@ function toneFor(skill: string) {
   if (skill === "reading") return "reading";
   if (skill === "listening") return "listening";
   if (skill === "writing") return "writing";
+  if (skill === "full_test") return "full";
   return "neutral";
 }
 
