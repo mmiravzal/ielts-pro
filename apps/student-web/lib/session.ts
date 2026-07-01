@@ -44,7 +44,6 @@ export async function requireStudentSession() {
   const session = await getStudentSession();
   if (!session) redirect("/");
   if (!session.device_session_id || !session.session_token) {
-    await clearStudentSession();
     redirect("/?error=session-expired");
   }
   const requestHeaders = await headers();
@@ -58,11 +57,9 @@ export async function requireStudentSession() {
     });
   } catch (error) {
     console.error("Student session validation failed", error);
-    await clearStudentSession();
     redirect("/?error=access-setup");
   }
   if (!valid) {
-    await clearStudentSession();
     redirect("/?error=session-revoked");
   }
   return session;
