@@ -6,7 +6,7 @@ Create two Vercel projects from the same GitHub repository.
 
 - Project name: `ielts-pro-student`
 - Root directory: repository root (`.`)
-- Install command: `npm install`
+- Install command: `npm ci`
 - Build command: `npm run build:vercel`
 - Output directory: `.next`
 
@@ -25,8 +25,8 @@ Suggested production domain:
 
 - Project name: `ielts-pro-admin`
 - Root directory: repository root (`.`)
-- Install command: `npm install`
-- Build command: `npm run build:admin && rm -rf .next && cp -R apps/admin-web/.next .next`
+- Install command: `npm ci`
+- Build command: `npm run build:vercel`
 - Output directory: `.next`
 
 Environment variables:
@@ -36,6 +36,7 @@ Environment variables:
 - `SUPABASE_SERVICE_ROLE_KEY` - server-only, needed for admin data management
 - `ADMIN_SESSION_SECRET` - strong random string
 - `ADMIN_EMAILS` - comma-separated admin emails, e.g. `miravzalsalakhiddinov@gmail.com`
+- `VERCEL_APP` - set to `admin`
 
 Suggested production domain:
 
