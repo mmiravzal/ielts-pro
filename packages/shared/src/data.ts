@@ -52,7 +52,7 @@ export async function getPublishedTasksForStudent(supabase: SupabaseClient, grou
     if (tasksError) throw tasksError;
     return { lessons, tasks: (tasksData || []) as Task[] };
   } catch (error) {
-    if (!isMissingGroupLessonColumnError(error)) throw error;
+    if (!isMissingGroupLessonColumnError(error) && !isMissingContentMetadataColumnError(error)) throw error;
     return getPublishedTasks(supabase);
   }
 }
@@ -64,8 +64,16 @@ export async function getStudentByCode(supabase: SupabaseClient, name: string, c
     .ilike("name", name)
     .eq("student_code", code)
     .maybeSingle();
-  if (error) throw error;
-  return data as Student | null;
+  if (!error) return data as Student | null;
+  if (!isMissingStudentRelationOrColumnError(error)) throw error;
+  const fallback = await supabase
+    .from("students")
+    .select("*")
+    .ilike("name", name)
+    .eq("student_code", code)
+    .maybeSingle();
+  if (fallback.error) throw fallback.error;
+  return fallback.data as Student | null;
 }
 
 export async function getStudentById(supabase: SupabaseClient, studentId: string) {
@@ -74,8 +82,15 @@ export async function getStudentById(supabase: SupabaseClient, studentId: string
     .select("*,groups(name)")
     .eq("id", studentId)
     .maybeSingle();
-  if (error) throw error;
-  return data as Student | null;
+  if (!error) return data as Student | null;
+  if (!isMissingStudentRelationOrColumnError(error)) throw error;
+  const fallback = await supabase
+    .from("students")
+    .select("*")
+    .eq("id", studentId)
+    .maybeSingle();
+  if (fallback.error) throw fallback.error;
+  return fallback.data as Student | null;
 }
 
 export async function getOpenStudentByAccessId(supabase: SupabaseClient, name: string, accessId: string) {
@@ -98,17 +113,16 @@ export async function createStudentAccess(supabase: SupabaseClient, input: { nam
       access_status: "open",
       max_devices: input.maxDevices ?? null
     })
-    .select("*,groups(name)")
+    .select("*")
     .single();
   if (error && isMissingAccessColumnsError(error)) {
     const { data: fallbackData, error: fallbackError } = await supabase
       .from("students")
       .insert({
         name: input.name,
-        student_code: input.accessId,
-        group_id: input.groupId ?? null
+        student_code: input.accessId
       })
-      .select("*,groups(name)")
+      .select("*")
       .single();
     if (fallbackError) throw fallbackError;
     return fallbackData as Student;
@@ -122,10 +136,24 @@ export async function setStudentAccessStatus(supabase: SupabaseClient, studentId
     .from("students")
     .update({ is_active: open, access_status: open ? "open" : "closed", updated_at: new Date().toISOString() })
     .eq("id", studentId)
-    .select("*,groups(name)")
+    .select("*")
     .single();
-  if (error) throw error;
-  return data as Student;
+  if (!error) return data as Student;
+  if (isMissingUpdatedAtColumnError(error)) {
+    const fallback = await supabase
+      .from("students")
+      .update({ is_active: open, access_status: open ? "open" : "closed" })
+      .eq("id", studentId)
+      .select("*")
+      .single();
+    if (!fallback.error) return fallback.data as Student;
+    if (!isMissingAccessColumnsError(fallback.error)) throw fallback.error;
+  } else if (!isMissingAccessColumnsError(error)) {
+    throw error;
+  }
+  const current = await supabase.from("students").select("*").eq("id", studentId).single();
+  if (current.error) throw current.error;
+  return current.data as Student;
 }
 
 export async function touchStudentLogin(supabase: SupabaseClient, studentId: string) {
@@ -133,7 +161,9 @@ export async function touchStudentLogin(supabase: SupabaseClient, studentId: str
     .from("students")
     .update({ last_login_at: new Date().toISOString(), updated_at: new Date().toISOString() })
     .eq("id", studentId);
-  if (error) throw error;
+  if (!error) return;
+  if (isMissingAccessColumnsError(error) || isMissingUpdatedAtColumnError(error)) return;
+  throw error;
 }
 
 export async function createStudentDeviceSession(
@@ -221,8 +251,15 @@ export async function getStudentSubmissions(supabase: SupabaseClient, studentId:
     .select("*,tasks(title,skill,lessons(title))")
     .eq("student_id", studentId)
     .order("submitted_at", { ascending: false });
-  if (error) throw error;
-  return (data || []) as Submission[];
+  if (!error) return (data || []) as Submission[];
+  if (!isMissingRelationOrColumnError(error)) throw error;
+  const fallback = await supabase
+    .from("submissions")
+    .select("*")
+    .eq("student_id", studentId)
+    .order("submitted_at", { ascending: false });
+  if (fallback.error) throw fallback.error;
+  return (fallback.data || []) as Submission[];
 }
 
 export async function getPublishedTaskById(supabase: SupabaseClient, taskId: string) {
@@ -310,15 +347,20 @@ export async function getAdminDashboardStats(supabase: SupabaseClient) {
 export async function getAllGroups(supabase: SupabaseClient) {
   await ensureDefaultGroups(supabase);
   const { data, error } = await supabase.from("groups").select("*").order("order", { ascending: true });
-  if (error) throw error;
-  return (data || []) as Group[];
+  if (!error) return (data || []) as Group[];
+  if (isMissingTableError(error)) return [];
+  if (!isMissingGroupColumnError(error)) throw error;
+  const fallback = await supabase.from("groups").select("*").order("name", { ascending: true });
+  if (!fallback.error) return (fallback.data || []) as Group[];
+  if (isMissingTableError(fallback.error)) return [];
+  throw fallback.error;
 }
 
 export async function ensureDefaultGroups(supabase: SupabaseClient) {
   const { error } = await supabase
     .from("groups")
     .upsert(DEFAULT_GROUPS, { onConflict: "slug", ignoreDuplicates: false });
-  if (error && isMissingGroupSlugColumnError(error)) return;
+  if (error && (isMissingGroupColumnError(error) || isMissingTableError(error))) return;
   if (error) throw error;
 }
 
@@ -329,14 +371,26 @@ export async function createGroup(supabase: SupabaseClient, input: { name: strin
     .upsert({ name: input.name, slug, order: input.order ?? 10, updated_at: new Date().toISOString() }, { onConflict: "slug" })
     .select()
     .single();
+  if (error && isMissingGroupColumnError(error)) {
+    const fallback = await supabase
+      .from("groups")
+      .insert({ name: input.name })
+      .select("*")
+      .single();
+    if (fallback.error) throw fallback.error;
+    return fallback.data as Group;
+  }
   if (error) throw error;
   return data as Group;
 }
 
 export async function getAllStudents(supabase: SupabaseClient) {
   const { data, error } = await supabase.from("students").select("*,groups(name)").order("name", { ascending: true });
-  if (error) throw error;
-  return (data || []) as Student[];
+  if (!error) return (data || []) as Student[];
+  if (!isMissingStudentRelationOrColumnError(error)) throw error;
+  const fallback = await supabase.from("students").select("*").order("name", { ascending: true });
+  if (fallback.error) throw fallback.error;
+  return (fallback.data || []) as Student[];
 }
 
 export async function getAllLessons(supabase: SupabaseClient) {
@@ -356,8 +410,11 @@ export async function getAllTasks(supabase: SupabaseClient) {
   if (!error) return (data || []) as Task[];
   if (!isMissingContentMetadataColumnError(error) && !isMissingGroupLessonColumnError(error)) throw error;
   const fallback = await supabase.from("tasks").select("*,lessons(title,published)").order("order", { ascending: true });
-  if (fallback.error) throw fallback.error;
-  return (fallback.data || []) as Task[];
+  if (!fallback.error) return (fallback.data || []) as Task[];
+  if (!isMissingRelationOrColumnError(fallback.error)) throw fallback.error;
+  const plain = await supabase.from("tasks").select("*").order("order", { ascending: true });
+  if (plain.error) throw plain.error;
+  return (plain.data || []) as Task[];
 }
 
 export async function createLesson(supabase: SupabaseClient, input: Pick<Lesson, "title" | "description" | "order" | "published" | "skill"> & { group_id?: string | null; status?: string | null }) {
@@ -441,18 +498,21 @@ export async function updateStudentGroup(supabase: SupabaseClient, studentId: st
     .from("students")
     .update({ group_id: groupId, updated_at: new Date().toISOString() })
     .eq("id", studentId)
-    .select("*,groups(name)")
+    .select("*")
     .single();
   if (!error) return data as Student;
-  if (!isMissingAccessColumnsError(error)) throw error;
+  if (!isMissingAccessColumnsError(error) && !isMissingUpdatedAtColumnError(error)) throw error;
   const fallback = await supabase
     .from("students")
     .update({ group_id: groupId })
     .eq("id", studentId)
-    .select("*,groups(name)")
+    .select("*")
     .single();
-  if (fallback.error) throw fallback.error;
-  return fallback.data as Student;
+  if (!fallback.error) return fallback.data as Student;
+  if (!isMissingAccessColumnsError(fallback.error)) throw fallback.error;
+  const current = await supabase.from("students").select("*").eq("id", studentId).single();
+  if (current.error) throw current.error;
+  return current.data as Student;
 }
 
 export async function getWritingSubmissions(supabase: SupabaseClient) {
@@ -460,8 +520,14 @@ export async function getWritingSubmissions(supabase: SupabaseClient) {
     .from("submissions")
     .select("*,students(name,student_code),tasks(title,skill,lessons(title))")
     .order("submitted_at", { ascending: false });
-  if (error) throw error;
-  return (data || []) as Submission[];
+  if (!error) return (data || []) as Submission[];
+  if (!isMissingRelationOrColumnError(error)) throw error;
+  const fallback = await supabase
+    .from("submissions")
+    .select("*")
+    .order("submitted_at", { ascending: false });
+  if (fallback.error) throw fallback.error;
+  return (fallback.data || []) as Submission[];
 }
 
 export async function reviewWritingSubmission(supabase: SupabaseClient, submissionId: string, input: { score: number | null; feedback: string | null }) {
@@ -478,19 +544,45 @@ export async function reviewWritingSubmission(supabase: SupabaseClient, submissi
 function isMissingAccessColumnsError(error: unknown) {
   const message = String((error as { message?: string })?.message || "");
   const code = String((error as { code?: string })?.code || "");
-  return code === "PGRST204" || message.includes("is_active") || message.includes("access_status") || message.includes("max_devices");
+  return (
+    code === "PGRST204" ||
+    message.includes("is_active") ||
+    message.includes("access_status") ||
+    message.includes("max_devices") ||
+    message.includes("group_id") ||
+    message.includes("last_login_at")
+  );
 }
 
-function isMissingGroupSlugColumnError(error: unknown) {
+function isMissingUpdatedAtColumnError(error: unknown) {
   const message = String((error as { message?: string })?.message || "");
   const code = String((error as { code?: string })?.code || "");
-  return code === "PGRST204" || message.includes("slug") || message.includes("on conflict");
+  return code === "PGRST204" || message.includes("updated_at");
+}
+
+function isMissingGroupColumnError(error: unknown) {
+  const message = String((error as { message?: string })?.message || "");
+  const code = String((error as { code?: string })?.code || "");
+  return (
+    code === "PGRST204" ||
+    message.includes("slug") ||
+    message.includes("on conflict") ||
+    (message.includes("order") && message.includes("groups"))
+  );
 }
 
 function isMissingGroupLessonColumnError(error: unknown) {
   const message = String((error as { message?: string })?.message || "");
   const code = String((error as { code?: string })?.code || "");
-  return code === "PGRST204" || message.includes("group_id") || message.includes("status") || message.includes("lessons_groups");
+  return (
+    code === "PGRST200" ||
+    code === "PGRST204" ||
+    message.includes("group_id") ||
+    message.includes("status") ||
+    message.includes("lessons_groups") ||
+    message.includes("relationship") ||
+    message.includes("schema cache")
+  );
 }
 
 function isMissingContentMetadataColumnError(error: unknown) {
@@ -505,8 +597,31 @@ function isMissingContentMetadataColumnError(error: unknown) {
     message.includes("answer_count") ||
     message.includes("audio_detected") ||
     message.includes("warnings") ||
-    message.includes("archived_at")
+    message.includes("archived_at") ||
+    message.includes("updated_at")
   );
+}
+
+function isMissingStudentRelationOrColumnError(error: unknown) {
+  return isMissingAccessColumnsError(error) || isMissingRelationOrColumnError(error);
+}
+
+function isMissingRelationOrColumnError(error: unknown) {
+  const message = String((error as { message?: string })?.message || "");
+  const code = String((error as { code?: string })?.code || "");
+  return (
+    code === "PGRST200" ||
+    code === "PGRST204" ||
+    message.includes("relationship") ||
+    message.includes("schema cache") ||
+    message.includes("Could not find")
+  );
+}
+
+function isMissingTableError(error: unknown) {
+  const message = String((error as { message?: string })?.message || "");
+  const code = String((error as { code?: string })?.code || "");
+  return code === "42P01" || code === "PGRST205" || message.includes("Could not find the table");
 }
 
 function slugify(value: string) {
