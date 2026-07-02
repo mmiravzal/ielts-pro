@@ -18,26 +18,39 @@ export default async function LessonsPage() {
 
   return (
     <AdminShell email={admin.email}>
-      <div className="studio-hero">
+      <div className="content-command">
         <div>
           <p className="eyebrow">Content studio</p>
-          <h1>Build IELTS practice that is ready for students.</h1>
-          <p>Manage skill lessons, full tests, publication state, and student preview links from one operating surface.</p>
+          <h1>Control every IELTS practice flow.</h1>
+          <p>Build lessons, attach tests, check publication state, and open the exact student preview without hunting through pages.</p>
         </div>
-        <div className="studio-actions">
-          <Link className="btn btn-primary" href="/full-tests/new">Create Full Test</Link>
-          <Link className="btn btn-secondary" href="/full-tests">Full Test Library</Link>
+        <div className="command-cards" aria-label="Content shortcuts">
+          <Link className="command-card command-card-primary" href="/full-tests/new">
+            <span>Build</span>
+            <strong>New full test</strong>
+            <small>Reading, listening, writing</small>
+          </Link>
+          <Link className="command-card" href="#quick-lesson">
+            <span>Create</span>
+            <strong>Skill lesson</strong>
+            <small>Lesson shell + publish</small>
+          </Link>
+          <Link className="command-card" href="/full-tests">
+            <span>Library</span>
+            <strong>Full tests</strong>
+            <small>Manage bundles</small>
+          </Link>
         </div>
       </div>
 
-      <section className="stats-grid" aria-label="Content summary">
+      <section className="stats-grid content-stats" aria-label="Content summary">
         <StatCard label="Published" value={publishedLessons.length} note="visible to students" />
         <StatCard label="Drafts" value={draftLessons.length} note="hidden until checked" />
         <StatCard label="Tasks" value={tasks.length} note="all skill practice" />
         <StatCard label="Full Tests" value={fullTests.length} note="exam-style bundles" />
       </section>
 
-      <div className="panel-grid">
+      <div className="content-workspace">
         <section className="studio-stack">
           <Card className="panel">
             <div className="section-head">
@@ -45,7 +58,7 @@ export default async function LessonsPage() {
                 <p className="eyebrow">Skill map</p>
                 <h2>Practice categories</h2>
               </div>
-              <Link href="/full-tests/new">Open builder</Link>
+              <Link className="inline-action" href="/full-tests/new">Open builder</Link>
             </div>
             <div className="studio-skill-grid">
               <SkillTile label="Reading" value={tasks.filter((task) => task.skill === "reading").length} tone="reading" />
@@ -69,13 +82,15 @@ export default async function LessonsPage() {
                   return (
                     <article className="lesson-card" key={lesson.id}>
                       <div>
-                        <Badge tone={lesson.published ? "success" : "warning"}>{lesson.published ? "Published" : "Draft"}</Badge>
+                        <div className="lesson-card-top">
+                          <Badge tone={lesson.published ? "success" : "warning"}>{lesson.published ? "Published" : "Draft"}</Badge>
+                          <span>{labelFor(String(lesson.skill || "reading"))}</span>
+                        </div>
                         <h3>{lesson.title}</h3>
-                        <p className="muted">{lesson.description || "No description"}</p>
+                        <p className="muted">{lesson.description || "No description yet"}</p>
                         <div className="visibility-check">
                           <span className={lesson.published ? "ok" : "warn"}>{lesson.published ? "Student visible" : "Hidden from students"}</span>
                           <span className={lessonTasks.length ? "ok" : "warn"}>{lessonTasks.length ? `${lessonTasks.length} task(s)` : "No tasks yet"}</span>
-                          <span>{labelFor(String(lesson.skill || "reading"))}</span>
                         </div>
                       </div>
                       <form action={toggleLessonPublishAction}>
@@ -95,6 +110,7 @@ export default async function LessonsPage() {
               <div>
                 <p className="eyebrow">Student visibility</p>
                 <h2>Task preview matrix</h2>
+                <p className="muted">Use this table to confirm what students can actually open.</p>
               </div>
             </div>
             {tasks.length ? (
@@ -126,26 +142,28 @@ export default async function LessonsPage() {
           </Card>
         </section>
 
-        <Card className="panel">
-          <p className="eyebrow">Quick lesson</p>
-          <h2>Create skill lesson</h2>
-          <p className="muted">Use this for lesson shells. Use the full test builder for exam-style Reading, Listening, and Writing content.</p>
-          <form action={createLessonAction} className="form-stack">
-            <label>Title<Input name="title" required /></label>
-            <label>Description<Textarea name="description" /></label>
-            <div className="two-col">
-              <label>Skill<Select name="skill" defaultValue="reading"><option value="reading">Reading</option><option value="listening">Listening</option><option value="writing">Writing</option><option value="full_test">Full test</option></Select></label>
-              <label>Order<Input name="order" type="number" defaultValue={lessons.length + 1} /></label>
+        <aside className="quick-lesson-panel" id="quick-lesson">
+          <Card className="panel">
+            <p className="eyebrow">Quick lesson</p>
+            <h2>Create skill lesson</h2>
+            <p className="muted">Fast path for simple lessons. Use the full test builder when the task needs passages, audio, sections, and answers.</p>
+            <form action={createLessonAction} className="form-stack">
+              <label>Title<Input name="title" required /></label>
+              <label>Description<Textarea name="description" /></label>
+              <div className="two-col">
+                <label>Skill<Select name="skill" defaultValue="reading"><option value="reading">Reading</option><option value="listening">Listening</option><option value="writing">Writing</option><option value="full_test">Full test</option></Select></label>
+                <label>Order<Input name="order" type="number" defaultValue={lessons.length + 1} /></label>
+              </div>
+              <label className="check-row"><input type="checkbox" name="published" /> Publish now</label>
+              <Button>Create Lesson</Button>
+            </form>
+            <div className="side-note">
+              <strong>Builder workflow</strong>
+              <p>Draft first, preview as student, then publish when every required section has content.</p>
+              <Link className="btn btn-secondary" href="/full-tests/new">Open Full Test Builder</Link>
             </div>
-            <label className="check-row"><input type="checkbox" name="published" /> Publish now</label>
-            <Button>Create Lesson</Button>
-          </form>
-          <div className="side-note">
-            <strong>Builder workflow</strong>
-            <p>Draft first, preview as student, then publish when every required section has content.</p>
-            <Link className="btn btn-secondary" href="/full-tests/new">Open Full Test Builder</Link>
-          </div>
-        </Card>
+          </Card>
+        </aside>
       </div>
     </AdminShell>
   );

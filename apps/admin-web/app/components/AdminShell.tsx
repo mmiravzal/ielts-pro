@@ -2,15 +2,13 @@ import Link from "next/link";
 import { AppShell } from "@ielts-pro/ui";
 import { adminLogout } from "../actions/auth";
 import { AdminNav } from "./AdminNav";
+import { AdminPageTitle } from "./AdminPageTitle";
 
 export function AdminShell({ email, children }: { email: string; children: React.ReactNode }) {
   return (
     <AppShell sidebar={<Sidebar email={email} />}>
       <div className="admin-topbar">
-        <div>
-          <span className="admin-status-dot" aria-hidden="true" />
-          <span>Teacher workspace</span>
-        </div>
+        <AdminPageTitle />
         <div className="admin-topbar-actions">
           <Link href="/students">Student access</Link>
           <Link href="/full-tests/new">New test</Link>
