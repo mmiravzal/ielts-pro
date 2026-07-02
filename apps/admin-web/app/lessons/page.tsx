@@ -50,7 +50,25 @@ export default async function LessonsPage() {
         <StatCard label="Full Tests" value={fullTests.length} note="exam-style bundles" />
       </section>
 
-      <div className="content-workspace">
+      <div className="content-workspace content-workspace-single">
+        <aside className="quick-lesson-panel" id="quick-lesson">
+          <Card className="panel quick-lesson-card">
+            <div>
+              <p className="eyebrow">Quick lesson</p>
+              <h2>Create skill lesson</h2>
+              <p className="muted">Fast path for simple lessons. Use Test Builder when the task needs passages, audio, sections, and answers.</p>
+            </div>
+            <form action={createLessonAction} className="quick-lesson-form">
+              <label>Title<Input name="title" required /></label>
+              <label>Description<Textarea name="description" /></label>
+              <label>Skill<Select name="skill" defaultValue="reading"><option value="reading">Reading</option><option value="listening">Listening</option><option value="writing">Writing</option><option value="full_test">Full test</option></Select></label>
+              <label>Order<Input name="order" type="number" defaultValue={lessons.length + 1} /></label>
+              <label className="check-row"><input type="checkbox" name="published" /> Publish now</label>
+              <Button>Create Lesson</Button>
+            </form>
+          </Card>
+        </aside>
+
         <section className="studio-stack">
           <Card className="panel">
             <div className="section-head">
@@ -142,28 +160,6 @@ export default async function LessonsPage() {
           </Card>
         </section>
 
-        <aside className="quick-lesson-panel" id="quick-lesson">
-          <Card className="panel">
-            <p className="eyebrow">Quick lesson</p>
-            <h2>Create skill lesson</h2>
-            <p className="muted">Fast path for simple lessons. Use the full test builder when the task needs passages, audio, sections, and answers.</p>
-            <form action={createLessonAction} className="form-stack">
-              <label>Title<Input name="title" required /></label>
-              <label>Description<Textarea name="description" /></label>
-              <div className="two-col">
-                <label>Skill<Select name="skill" defaultValue="reading"><option value="reading">Reading</option><option value="listening">Listening</option><option value="writing">Writing</option><option value="full_test">Full test</option></Select></label>
-                <label>Order<Input name="order" type="number" defaultValue={lessons.length + 1} /></label>
-              </div>
-              <label className="check-row"><input type="checkbox" name="published" /> Publish now</label>
-              <Button>Create Lesson</Button>
-            </form>
-            <div className="side-note">
-              <strong>Builder workflow</strong>
-              <p>Draft first, preview as student, then publish when every required section has content.</p>
-              <Link className="btn btn-secondary" href="/full-tests/new">Open Full Test Builder</Link>
-            </div>
-          </Card>
-        </aside>
       </div>
     </AdminShell>
   );

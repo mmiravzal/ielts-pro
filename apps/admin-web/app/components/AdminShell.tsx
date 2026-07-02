@@ -12,6 +12,7 @@ export function AdminShell({ email, children }: { email: string; children: React
         <div className="admin-topbar-actions">
           <Link href="/students">Student access</Link>
           <Link href="/full-tests/new">New test</Link>
+          <Link href="/student-control">Student control</Link>
         </div>
       </div>
       <div className="admin-content">
