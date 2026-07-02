@@ -57,6 +57,19 @@ export async function createStudentAccess(supabase: SupabaseClient, input: { nam
     })
     .select("*,groups(name)")
     .single();
+  if (error && isMissingAccessColumnsError(error)) {
+    const { data: fallbackData, error: fallbackError } = await supabase
+      .from("students")
+      .insert({
+        name: input.name,
+        student_code: input.accessId,
+        group_id: input.groupId ?? null
+      })
+      .select("*,groups(name)")
+      .single();
+    if (fallbackError) throw fallbackError;
+    return fallbackData as Student;
+  }
   if (error) throw error;
   return data as Student;
 }
@@ -291,4 +304,10 @@ export async function reviewWritingSubmission(supabase: SupabaseClient, submissi
     .single();
   if (error) throw error;
   return data as Submission;
+}
+
+function isMissingAccessColumnsError(error: unknown) {
+  const message = String((error as { message?: string })?.message || "");
+  const code = String((error as { code?: string })?.code || "");
+  return code === "PGRST204" || message.includes("is_active") || message.includes("access_status") || message.includes("max_devices");
 }

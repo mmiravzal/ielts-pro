@@ -272,6 +272,16 @@ tr:last-child td { border-bottom: 0; }
 }
 .access-summary-card strong { font-size: 48px; letter-spacing: 0; }
 .access-summary-card small { color: var(--muted); }
+.setup-note {
+  margin: 0 0 18px;
+  padding: 12px 14px;
+  border: 1px solid #f6d48d;
+  border-radius: 8px;
+  background: #fff7e6;
+  color: #8a5200;
+  font-weight: 800;
+  line-height: 1.45;
+}
 .table-note { margin: 4px 0 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
 .access-code {
   display: inline-flex;

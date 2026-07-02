@@ -14,8 +14,9 @@ export default async function StudentsPage() {
     sessions = await getStudentDeviceSessions(supabase);
   } catch (error) {
     console.error("Student device sessions unavailable", error);
-    accessSetupWarning = "Student device sessions are not available yet. Apply the Supabase student access migration before using device kick/revoke.";
+    accessSetupWarning = "Device tracking is pending. Student IDs can still be created and used; apply the Supabase migration to enable close access, kick, and revoke controls.";
   }
+  const deviceSessionsAvailable = !accessSetupWarning;
   const sessionsByStudent = new Map<string, typeof sessions>();
   sessions.forEach((session) => {
     sessionsByStudent.set(session.student_id, [...(sessionsByStudent.get(session.student_id) || []), session]);
@@ -54,11 +55,15 @@ export default async function StudentsPage() {
         <Card className="panel access-summary-card">
           <span>Open IDs</span>
           <strong>{students.filter((student) => student.is_active !== false && student.access_status !== "closed").length}</strong>
-          <small>{sessions.filter((session) => session.is_active !== false && !session.revoked_at).length} active device sessions</small>
+          <small>
+            {deviceSessionsAvailable
+              ? `${sessions.filter((session) => session.is_active !== false && !session.revoked_at).length} active device sessions`
+              : "Device tracking pending migration"}
+          </small>
         </Card>
       </div>
 
-      {accessSetupWarning ? <p className="form-error">{accessSetupWarning}</p> : null}
+      {accessSetupWarning ? <p className="setup-note">{accessSetupWarning}</p> : null}
 
       <Card className="panel">
         {students.length ? (
@@ -72,22 +77,26 @@ export default async function StudentsPage() {
                     <p className="table-note">{student.groups?.name || "No group"} · Last login {formatDate(student.last_login_at)}</p>
                   </td>
                   <td><code className="access-code">{student.student_code}</code></td>
-                  <td>{isOpen(student) ? <Badge tone="success">Open</Badge> : <Badge tone="warning">Closed</Badge>}</td>
+                  <td>{deviceSessionsAvailable ? (isOpen(student) ? <Badge tone="success">Open</Badge> : <Badge tone="warning">Closed</Badge>) : <Badge tone="warning">Legacy</Badge>}</td>
                   <td>
-                    <DeviceSessionList sessions={sessionsByStudent.get(student.id) || []} />
+                    {deviceSessionsAvailable ? <DeviceSessionList sessions={sessionsByStudent.get(student.id) || []} /> : <span className="table-note">Device tracking pending. Student can still log in with this access ID.</span>}
                   </td>
                   <td>
-                    <div className="table-actions">
-                      <form action={toggleStudentAccessAction}>
-                        <input type="hidden" name="student_id" value={student.id} />
-                        <input type="hidden" name="open" value={String(!isOpen(student))} />
-                        <Button variant={isOpen(student) ? "danger" : "secondary"}>{isOpen(student) ? "Close access" : "Open access"}</Button>
-                      </form>
-                      <form action={revokeAllDevicesAction}>
-                        <input type="hidden" name="student_id" value={student.id} />
-                        <Button variant="secondary">Revoke all devices</Button>
-                      </form>
-                    </div>
+                    {deviceSessionsAvailable ? (
+                      <div className="table-actions">
+                        <form action={toggleStudentAccessAction}>
+                          <input type="hidden" name="student_id" value={student.id} />
+                          <input type="hidden" name="open" value={String(!isOpen(student))} />
+                          <Button variant={isOpen(student) ? "danger" : "secondary"}>{isOpen(student) ? "Close access" : "Open access"}</Button>
+                        </form>
+                        <form action={revokeAllDevicesAction}>
+                          <input type="hidden" name="student_id" value={student.id} />
+                          <Button variant="secondary">Revoke all devices</Button>
+                        </form>
+                      </div>
+                    ) : (
+                      <span className="table-note">Run the migration to manage devices.</span>
+                    )}
                   </td>
                 </tr>
               ))}
