@@ -1,10 +1,10 @@
 "use server";
 
-import crypto from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
   createLesson,
+  createGroup,
   createServerSupabaseClient,
   createStudentAccess,
   createTask,
@@ -12,13 +12,13 @@ import {
   revokeStudentDeviceSession,
   reviewWritingSubmission,
   setStudentAccessStatus,
+  updateStudentGroup,
   updateLesson,
-  type Question,
+  updateTasksForLessonStatus,
+  updateTask,
   type TaskContent
 } from "@ielts-pro/shared";
 import { requireAdminSession } from "@/lib/session";
-
-const AUDIO_BUCKET = "task-media";
 
 export async function createLessonAction(formData: FormData) {
   await requireAdminSession();
@@ -29,9 +29,25 @@ export async function createLessonAction(formData: FormData) {
     description: String(formData.get("description") || "").trim() || null,
     order: Number(formData.get("order") || 1),
     published: formData.get("published") === "on",
-    skill: String(formData.get("skill") || "reading")
+    skill: String(formData.get("skill") || "reading"),
+    group_id: text(formData, "group_id") || null
   });
   revalidatePath("/lessons");
+  revalidatePath("/student-control");
+  revalidatePath("/dashboard");
+}
+
+export async function createGroupAction(formData: FormData) {
+  await requireAdminSession();
+  const name = text(formData, "group_name");
+  if (!name) return;
+  await createGroup(createServerSupabaseClient(), {
+    name,
+    order: numberField(formData, "group_order", 10)
+  });
+  revalidatePath("/lessons");
+  revalidatePath("/students");
+  revalidatePath("/student-control");
   revalidatePath("/dashboard");
 }
 
@@ -44,9 +60,21 @@ export async function createStudentAccessAction(formData: FormData) {
   await createStudentAccess(createServerSupabaseClient(), {
     name,
     accessId,
+    groupId: text(formData, "group_id") || null,
     maxDevices: maxDevicesValue ? Number(maxDevicesValue) : null
   });
   revalidatePath("/students");
+  revalidatePath("/student-control");
+}
+
+export async function updateStudentGroupAction(formData: FormData) {
+  await requireAdminSession();
+  const studentId = text(formData, "student_id");
+  const groupId = text(formData, "group_id") || null;
+  if (!studentId) return;
+  await updateStudentGroup(createServerSupabaseClient(), studentId, groupId);
+  revalidatePath("/students");
+  revalidatePath("/student-control");
 }
 
 export async function toggleStudentAccessAction(formData: FormData) {
@@ -76,112 +104,99 @@ export async function revokeAllDevicesAction(formData: FormData) {
   revalidatePath("/students");
 }
 
-export async function createFullTestDraftAction(formData: FormData) {
+export async function importHtmlContentAction(formData: FormData) {
   await requireAdminSession();
+  let successPath = "/full-tests/new";
   try {
     const supabase = createServerSupabaseClient();
-    const title = requiredText(formData, "title");
-    const uploadedAudioUrl = await uploadAudioIfPresent(supabase, formData);
-    const manualAudioUrl = text(formData, "audio_url");
-    const audioUrl = uploadedAudioUrl || manualAudioUrl || null;
-    const content = buildFullTestContent(formData, audioUrl);
+    const file = formData.get("html_file");
+    if (!isUpload(file)) throw new Error("Upload an .html file first.");
+    const fileName = String(file.name || "").trim();
+    const lowerName = fileName.toLowerCase();
+    if (!lowerName.endsWith(".html") && !lowerName.endsWith(".htm")) {
+      throw new Error("Only .html files are accepted. JSON, TXT, PDF, and DOCX are not supported in Test Builder.");
+    }
+    const rawHtml = await file.text();
+    const parsed = parseHtmlImport(rawHtml, {
+      fileName,
+      mode: text(formData, "import_mode") || "separate_skill",
+      structure: text(formData, "import_structure") || "single_html",
+      skill: text(formData, "skill") || "reading",
+      subtype: text(formData, "subtype"),
+      questionType: text(formData, "question_type"),
+      manualAudioUrl: text(formData, "manual_audio_url")
+    });
+    const contentName = text(formData, "content_name") || parsed.title;
 
     const lesson = await createLesson(supabase, {
-      title,
-      description: text(formData, "description") || "Full IELTS practice test",
-      order: numberField(formData, "order", 1),
-      published: formData.get("published") === "on",
-      skill: "full_test"
+      title: `[Draft content] ${contentName}`,
+      description: "Imported content library item. Attach it to a lesson in Content Studio before publishing.",
+      order: 999,
+      published: false,
+      status: "draft",
+      skill: parsed.skill
     });
 
-    await createTask(supabase, {
+    const task = await createTask(supabase, {
       lesson_id: lesson.id,
-      title,
-      skill: "full_test",
-      task_type: "full_test",
-      content: JSON.stringify(content),
+      title: contentName,
+      skill: parsed.skill,
+      task_type: parsed.taskType,
+      content: JSON.stringify(parsed.content),
       order: 1,
-      audio_url: audioUrl
+      audio_url: parsed.audioUrl,
+      source_type: "html",
+      content_status: "draft",
+      content_type: parsed.contentType,
+      subtype: parsed.subtype,
+      question_count: parsed.questionCount,
+      answer_count: parsed.answerCount,
+      audio_detected: Boolean(parsed.audioUrl),
+      warnings: parsed.warnings
     });
 
+    revalidatePath("/full-tests/new");
     revalidatePath("/lessons");
-    revalidatePath("/full-tests");
     revalidatePath("/dashboard");
+    const params = new URLSearchParams({
+      saved: "1",
+      task: task.id,
+      name: contentName,
+      skill: parsed.skill,
+      questions: String(parsed.questionCount),
+      answers: String(parsed.answerCount),
+      audio: parsed.audioUrl ? "yes" : "no",
+      warnings: String(parsed.warnings.length)
+    });
+    successPath = `/full-tests/new?${params.toString()}`;
   } catch (error) {
     redirectBuilderError(error);
   }
-  redirect("/full-tests");
+  redirect(successPath);
 }
 
-export async function importFullTestJsonAction(formData: FormData) {
+export async function attachContentToLessonAction(formData: FormData) {
   await requireAdminSession();
-  try {
-    const supabase = createServerSupabaseClient();
-    const rawJson = await readJsonImport(formData, "import_json", "json_file");
-    if (!rawJson) throw new Error("Paste JSON or upload a .json file first.");
-
-    const imported = parseFullTestImport(rawJson);
-    const lesson = await createLesson(supabase, {
-      title: imported.title,
-      description: imported.description || "Imported full IELTS practice test",
-      order: imported.order,
-      published: imported.published,
-      skill: "full_test"
-    });
-
-    await createTask(supabase, {
-      lesson_id: lesson.id,
-      title: imported.title,
-      skill: "full_test",
-      task_type: "full_test",
-      content: JSON.stringify(imported.content),
-      order: 1,
-      audio_url: imported.content.audio_url || null
-    });
-
-    revalidatePath("/lessons");
-    revalidatePath("/full-tests");
-    revalidatePath("/dashboard");
-  } catch (error) {
-    redirectBuilderError(error);
-  }
-  redirect("/full-tests");
+  const taskId = text(formData, "task_id");
+  const lessonId = text(formData, "lesson_id");
+  if (!taskId || !lessonId) return;
+  await updateTask(createServerSupabaseClient(), taskId, {
+    lesson_id: lessonId,
+    content_status: "assigned"
+  });
+  revalidatePath("/lessons");
+  revalidatePath("/full-tests/new");
+  revalidatePath("/dashboard");
 }
 
-export async function importSkillJsonAction(formData: FormData) {
+export async function updateLessonGroupAction(formData: FormData) {
   await requireAdminSession();
-  try {
-    const supabase = createServerSupabaseClient();
-    const skill = normaliseSkill(text(formData, "skill"));
-    const rawJson = await readJsonImport(formData, `${skill}_import_json`, `${skill}_json_file`);
-    if (!rawJson) throw new Error(`Paste ${skill} JSON or upload a .json file first.`);
-
-    const imported = parseSkillImport(rawJson, skill);
-    const lesson = await createLesson(supabase, {
-      title: imported.title,
-      description: imported.description,
-      order: imported.order,
-      published: imported.published,
-      skill
-    });
-
-    await createTask(supabase, {
-      lesson_id: lesson.id,
-      title: imported.title,
-      skill,
-      task_type: imported.taskType,
-      content: JSON.stringify(imported.content),
-      order: 1,
-      audio_url: imported.content.audio_url || null
-    });
-
-    revalidatePath("/lessons");
-    revalidatePath("/full-tests");
-    revalidatePath("/dashboard");
-  } catch (error) {
-    redirectBuilderError(error);
-  }
-  redirect("/full-tests");
+  const lessonId = text(formData, "lesson_id");
+  const groupId = text(formData, "group_id") || null;
+  if (!lessonId) return;
+  await updateLesson(createServerSupabaseClient(), lessonId, { group_id: groupId });
+  revalidatePath("/lessons");
+  revalidatePath("/dashboard");
 }
 
 export async function toggleLessonPublishAction(formData: FormData) {
@@ -189,9 +204,14 @@ export async function toggleLessonPublishAction(formData: FormData) {
   const id = String(formData.get("id") || "");
   const published = String(formData.get("published") || "") === "true";
   if (!id) return;
-  await updateLesson(createServerSupabaseClient(), id, { published: !published });
+  const supabase = createServerSupabaseClient();
+  const nextPublished = !published;
+  await updateLesson(supabase, id, { published: nextPublished });
+  await updateTasksForLessonStatus(supabase, id, nextPublished ? "published" : "assigned");
   revalidatePath("/lessons");
   revalidatePath("/dashboard");
+  revalidatePath("/full-tests/new");
+  revalidatePath("/student-control");
 }
 
 export async function reviewSubmissionAction(formData: FormData) {
@@ -211,204 +231,196 @@ function text(formData: FormData, key: string) {
   return String(formData.get(key) || "").trim();
 }
 
-function requiredText(formData: FormData, key: string) {
-  const value = text(formData, key);
-  if (!value) throw new Error(`${key} is required.`);
-  return value;
-}
-
 function numberField(formData: FormData, key: string, fallback: number) {
   const value = Number(formData.get(key) || fallback);
   return Number.isFinite(value) ? value : fallback;
-}
-
-function lines(value: string) {
-  return value.split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
-}
-
-function maybeQuestion(formData: FormData, prefix: string): Question | null {
-  const question = text(formData, `${prefix}_question`);
-  const type = text(formData, `${prefix}_question_type`) || "mcq";
-  if (!question && !text(formData, `${prefix}_note_items`)) return null;
-  const options = lines(text(formData, `${prefix}_options`));
-  const answer = text(formData, `${prefix}_answer`);
-  if (isCompletionType(type)) {
-    const labels = lines(text(formData, `${prefix}_note_items`));
-    const answers = lines(text(formData, `${prefix}_note_answers`));
-    return {
-      type,
-      question: question || "Complete the notes below.",
-      items: labels.map((label, index) => ({ label, answer: answers[index] || "" }))
-    };
-  }
-  if (type === "mcq_multi") {
-    return {
-      type,
-      question,
-      options: options.length ? options : undefined,
-      answer: lines(answer)
-    };
-  }
-  return {
-    type: options.length && type === "mcq" ? "mcq" : type,
-    question,
-    options: options.length ? options : undefined,
-    answer
-  };
-}
-
-function buildFullTestContent(formData: FormData, audioUrl: string | null): TaskContent {
-  const readingPassage = text(formData, "reading_passage");
-  const readingQuestion = maybeQuestion(formData, "reading");
-  const listeningQuestion = maybeQuestion(formData, "listening");
-  const writingTask1 = text(formData, "writing_task_1");
-  const writingTask2 = text(formData, "writing_task_2");
-  const questions = [readingQuestion, listeningQuestion].filter(Boolean) as Question[];
-
-  return {
-    difficulty: text(formData, "difficulty") || "academic",
-    duration_minutes: numberField(formData, "duration_minutes", 180),
-    time_limit_minutes: numberField(formData, "duration_minutes", 180),
-    passage_html: readingPassage ? `<p>${escapeHtml(readingPassage).replace(/\n{2,}/g, "</p><p>").replace(/\n/g, "<br />")}</p>` : undefined,
-    audio_url: audioUrl || undefined,
-    prompt: [writingTask1, writingTask2].filter(Boolean).join("\n\n"),
-    instructions: text(formData, "instructions") || "Complete each IELTS section and submit your answers for review.",
-    sections: [
-      {
-        skill: "reading",
-        title: text(formData, "reading_title") || "Reading section",
-        instructions: "Read the passage and answer the questions.",
-        passage_html: readingPassage ? `<p>${escapeHtml(readingPassage).replace(/\n{2,}/g, "</p><p>").replace(/\n/g, "<br />")}</p>` : undefined,
-        questions: readingQuestion ? [readingQuestion] : []
-      },
-      {
-        skill: "listening",
-        title: text(formData, "listening_title") || "Listening section",
-        instructions: "Listen once or twice, then answer the question.",
-        audio_url: audioUrl || undefined,
-        transcript: text(formData, "listening_transcript") || undefined,
-        questions: listeningQuestion ? [listeningQuestion] : []
-      },
-      {
-        skill: "writing",
-        title: "Writing section",
-        instructions: text(formData, "writing_instructions") || "Write your response for Task 1 and Task 2.",
-        prompt: [writingTask1, writingTask2].filter(Boolean).join("\n\n")
-      }
-    ],
-    questions
-  };
-}
-
-async function uploadAudioIfPresent(supabase: ReturnType<typeof createServerSupabaseClient>, formData: FormData) {
-  const file = formData.get("audio_file");
-  if (!isUpload(file)) return null;
-  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "-").slice(0, 90) || "listening-audio";
-  const path = `listening/${crypto.randomUUID()}-${safeName}`;
-  const { error } = await supabase.storage.from(AUDIO_BUCKET).upload(path, file, {
-    contentType: file.type || "audio/mpeg",
-    upsert: false
-  });
-  if (error) throw error;
-  return supabase.storage.from(AUDIO_BUCKET).getPublicUrl(path).data.publicUrl;
 }
 
 function isUpload(value: FormDataEntryValue | null): value is File {
   return !!value && typeof value === "object" && "arrayBuffer" in value && "name" in value && "size" in value && Number(value.size) > 0;
 }
 
-async function readJsonImport(formData: FormData, textKey: string, fileKey: string) {
-  const pasted = text(formData, textKey);
-  if (pasted) return pasted;
-  const file = formData.get(fileKey);
-  if (!isUpload(file)) return "";
-  return file.text();
-}
+type HtmlImportInput = {
+  fileName: string;
+  mode: string;
+  structure: string;
+  skill: string;
+  subtype: string;
+  questionType: string;
+  manualAudioUrl: string;
+};
 
-function parseFullTestImport(rawJson: string): { title: string; description: string | null; order: number; published: boolean; content: TaskContent } {
-  const parsed = parseJsonObject(rawJson);
-  const title = String(parsed.title || "").trim();
-  if (!title) throw new Error("Imported JSON must include a title.");
-  const content = normaliseImportedContent(parsed);
-  return {
-    title,
-    description: typeof parsed.description === "string" ? parsed.description : null,
-    order: typeof parsed.order === "number" ? parsed.order : 1,
-    published: parsed.published === true,
-    content
-  };
-}
-
-function parseSkillImport(rawJson: string, skill: "reading" | "listening" | "writing"): { title: string; description: string | null; order: number; published: boolean; taskType: string; content: TaskContent } {
-  const parsed = parseJsonObject(rawJson);
-  const section = pickSkillSection(parsed, skill);
-  const title = String(section.title || parsed.title || `${labelSkill(skill)} practice`).trim();
-  const questions = Array.isArray(section.questions) ? section.questions as Question[] : Array.isArray(parsed.questions) ? parsed.questions as Question[] : [];
+function parseHtmlImport(rawHtml: string, input: HtmlImportInput): {
+  title: string;
+  skill: "reading" | "listening" | "writing" | "full_test";
+  taskType: string;
+  contentType: string;
+  subtype: string;
+  audioUrl: string | null;
+  questionCount: number;
+  answerCount: number;
+  warnings: string[];
+  content: TaskContent;
+} {
+  const sanitized = sanitizeImportedHtml(rawHtml);
+  const textContent = htmlToText(sanitized);
+  if (!textContent || textContent.length < 20) throw new Error("This HTML file looks empty. Upload an IELTS test HTML with passage, prompt, or questions.");
+  const inferredSkill = inferSkill(input.skill, sanitized, textContent);
+  const skill = input.mode === "full_mock" || input.skill === "full_test" ? "full_test" : inferredSkill;
+  const audioUrl = input.manualAudioUrl || extractAudioUrl(sanitized);
+  const title = extractHtmlTitle(sanitized) || titleFromFile(input.fileName);
+  const questions = inferQuestions(sanitized, textContent, input.questionType);
+  const answerCount = countAnswerKeys(sanitized, textContent);
+  const warnings: string[] = [];
+  if (!questions.length && skill !== "writing") warnings.push("No objective question inputs were detected. Use Content Studio preview before publishing.");
+  if (skill === "listening" && !audioUrl) warnings.push("No audio URL was detected. Add audio metadata before assigning this listening test.");
+  if (skill === "writing" && textContent.length < 40) warnings.push("Writing prompt is very short. Check the preview before publishing.");
+  const subtype = input.subtype || defaultSubtype(skill, input.structure);
   const content: TaskContent = {
-    instructions: typeof section.instructions === "string" ? section.instructions : typeof parsed.instructions === "string" ? parsed.instructions : undefined,
-    time_limit_minutes: typeof parsed.time_limit_minutes === "number" ? parsed.time_limit_minutes : undefined,
-    passage_html: skill === "reading" && typeof section.passage_html === "string" ? section.passage_html : typeof parsed.passage_html === "string" ? parsed.passage_html : undefined,
-    audio_url: skill === "listening" && typeof section.audio_url === "string" ? section.audio_url : typeof parsed.audio_url === "string" ? parsed.audio_url : undefined,
-    prompt: skill === "writing" && typeof section.prompt === "string" ? section.prompt : typeof parsed.prompt === "string" ? parsed.prompt : undefined,
-    questions
+    source_type: "html",
+    import_mode: input.mode,
+    import_structure: input.structure,
+    subtype,
+    question_type: input.questionType || undefined,
+    instructions: defaultInstructions(skill),
+    passage_html: skill === "reading" || skill === "full_test" ? sanitized : undefined,
+    imported_html: sanitized,
+    audio_url: audioUrl || undefined,
+    prompt: skill === "writing" ? textContent : undefined,
+    questions,
+    question_count: questions.length,
+    answer_count: answerCount,
+    warnings,
+    preview_text: textContent.slice(0, 1200)
   };
+  if (skill === "listening") {
+    content.passage_html = sanitized;
+  }
   return {
     title,
-    description: typeof parsed.description === "string" ? parsed.description : `${labelSkill(skill)} JSON import`,
-    order: typeof parsed.order === "number" ? parsed.order : 1,
-    published: parsed.published === true,
-    taskType: skill === "writing" ? "writing_task" : `${skill}_practice`,
+    skill,
+    taskType: skill === "writing" ? "writing_task" : skill === "full_test" ? "full_test" : "imported_html",
+    contentType: skill,
+    subtype,
+    audioUrl: audioUrl || null,
+    questionCount: questions.length,
+    answerCount,
+    warnings,
     content
   };
 }
 
-function parseJsonObject(rawJson: string) {
-  try {
-    const parsed = JSON.parse(rawJson) as unknown;
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("JSON root must be an object.");
-    return parsed as Record<string, unknown>;
-  } catch (error) {
-    if (error instanceof SyntaxError) throw new Error(`JSON syntax error: ${error.message}`);
-    throw error;
-  }
+function sanitizeImportedHtml(html: string) {
+  return html
+    .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, "")
+    .replace(/<style[\s\S]*?>[\s\S]*?<\/style>/gi, "")
+    .replace(/\son\w+="[^"]*"/gi, "")
+    .replace(/\son\w+='[^']*'/gi, "")
+    .replace(/\son\w+=\S+/gi, "")
+    .replace(/javascript:/gi, "")
+    .trim();
 }
 
-function pickSkillSection(parsed: Record<string, unknown>, skill: "reading" | "listening" | "writing") {
-  const sections = Array.isArray(parsed.sections) ? parsed.sections as Array<Record<string, unknown>> : [];
-  return sections.find((section) => section.skill === skill) || parsed;
+function htmlToText(html: string) {
+  return html
+    .replace(/<(br|\/p|\/div|\/li|\/h[1-6])\b[^>]*>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#039;/gi, "'")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
-function normaliseImportedContent(parsed: Record<string, unknown>): TaskContent {
-  const sections = Array.isArray(parsed.sections) ? parsed.sections as TaskContent["sections"] : undefined;
-  const questions = Array.isArray(parsed.questions)
-    ? parsed.questions as Question[]
-    : (sections || []).flatMap((section) => Array.isArray(section?.questions) ? section.questions : []);
-  const audioUrl = typeof parsed.audio_url === "string"
-    ? parsed.audio_url
-    : sections?.find((section) => typeof section?.audio_url === "string")?.audio_url;
-
-  return {
-    difficulty: typeof parsed.difficulty === "string" ? parsed.difficulty : "academic",
-    duration_minutes: typeof parsed.duration_minutes === "number" ? parsed.duration_minutes : 180,
-    time_limit_minutes: typeof parsed.time_limit_minutes === "number" ? parsed.time_limit_minutes : typeof parsed.duration_minutes === "number" ? parsed.duration_minutes : 180,
-    passage_html: typeof parsed.passage_html === "string" ? parsed.passage_html : sections?.find((section) => typeof section?.passage_html === "string")?.passage_html,
-    audio_url: audioUrl,
-    prompt: typeof parsed.prompt === "string" ? parsed.prompt : sections?.filter((section) => section?.skill === "writing").map((section) => section?.prompt).filter(Boolean).join("\n\n"),
-    instructions: typeof parsed.instructions === "string" ? parsed.instructions : "Imported IELTS full test.",
-    sections,
-    questions
-  };
+function extractHtmlTitle(html: string) {
+  const title = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ||
+    html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i)?.[1] ||
+    html.match(/<h2[^>]*>([\s\S]*?)<\/h2>/i)?.[1];
+  return title ? htmlToText(title).slice(0, 120).trim() : "";
 }
 
-function normaliseSkill(value: string): "reading" | "listening" | "writing" {
+function titleFromFile(fileName: string) {
+  return fileName.replace(/\.(html|htm)$/i, "").replace(/[-_]+/g, " ").trim() || "Imported IELTS content";
+}
+
+function inferSkill(value: string, html: string, textValue: string): "reading" | "listening" | "writing" {
   if (value === "listening" || value === "writing") return value;
+  if (value === "reading") return "reading";
+  const sample = `${html} ${textValue}`.toLowerCase();
+  if (sample.includes("<audio") || sample.includes(".mp3") || sample.includes("listening")) return "listening";
+  if (sample.includes("writing task") || sample.includes("write at least") || sample.includes("essay")) return "writing";
   return "reading";
 }
 
-function labelSkill(skill: "reading" | "listening" | "writing") {
-  if (skill === "reading") return "Reading";
-  if (skill === "listening") return "Listening";
-  return "Writing";
+function extractAudioUrl(html: string) {
+  const direct = html.match(/<(?:audio|source)[^>]+src=["']([^"']+)["']/i)?.[1] ||
+    html.match(/href=["']([^"']+\.(?:mp3|wav|m4a|ogg)(?:\?[^"']*)?)["']/i)?.[1];
+  return direct ? direct.trim() : "";
+}
+
+function inferQuestions(html: string, textValue: string, questionType: string): NonNullable<TaskContent["questions"]> {
+  const inputCount = (html.match(/<(?:input|select|textarea)\b/gi) || []).length;
+  const numberedLines = textValue.split(/\n+/).filter((line) => /^\s*(?:\d{1,2}[\).]|Question\s+\d+)/i.test(line));
+  const total = Math.min(Math.max(inputCount, numberedLines.length), 40);
+  if (!total) return [];
+  const type = mapQuestionType(questionType);
+  if (isCompletionType(type)) {
+    return [{
+      type,
+      question: labelQuestionType(type),
+      items: Array.from({ length: total }, (_, index) => ({ label: `Question ${index + 1}: ___`, answer: "" }))
+    }];
+  }
+  return Array.from({ length: total }, (_, index) => ({
+    type: type || "short_answer",
+    question: numberedLines[index]?.replace(/^\s*\d{1,2}[\).]\s*/, "") || `Question ${index + 1}`,
+    answer: ""
+  }));
+}
+
+function mapQuestionType(value: string) {
+  const normalised = value.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+  if (normalised.includes("true_false") || normalised === "tfng") return "tfng";
+  if (normalised.includes("yes_no") || normalised === "ynng") return "ynng";
+  if (normalised.includes("multiple")) return "mcq";
+  if (normalised.includes("summary")) return "summary_completion";
+  if (normalised.includes("note")) return "note_completion";
+  if (normalised.includes("table")) return "table_completion";
+  if (normalised.includes("flow")) return "flow_chart";
+  if (normalised.includes("sentence")) return "sentence_completion";
+  if (normalised.includes("short")) return "short_answer";
+  if (normalised.includes("matching")) return "matching";
+  return normalised || "short_answer";
+}
+
+function labelQuestionType(type: string) {
+  return type.split("_").map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
+}
+
+function countAnswerKeys(html: string, textValue: string) {
+  const dataAnswers = (html.match(/data-answer=/gi) || []).length;
+  const answerSection = textValue.match(/answer\s*key[:\s]+([\s\S]+)/i)?.[1] || "";
+  const numberedAnswers = answerSection ? (answerSection.match(/\b\d{1,2}[\).]\s+\S+/g) || []).length : 0;
+  return Math.max(dataAnswers, numberedAnswers);
+}
+
+function defaultSubtype(skill: string, structure: string) {
+  if (structure) return structure;
+  if (skill === "listening") return "listening_part";
+  if (skill === "writing") return "writing_task";
+  if (skill === "full_test") return "full_test";
+  return "reading_passage";
+}
+
+function defaultInstructions(skill: string) {
+  if (skill === "listening") return "Listen to the audio and answer the questions.";
+  if (skill === "writing") return "Read the prompt and write your IELTS response.";
+  if (skill === "full_test") return "Complete the IELTS practice content and submit your answers.";
+  return "Read the passage and answer the questions.";
 }
 
 function isCompletionType(type: string) {
@@ -417,18 +429,9 @@ function isCompletionType(type: string) {
 
 function readableError(error: unknown) {
   if (error instanceof Error) return error.message;
-  return "Could not save this test. Check the JSON and required fields.";
+  return "Could not save this content. Check the HTML file and required fields.";
 }
 
 function redirectBuilderError(error: unknown): never {
   redirect(`/full-tests/new?error=${encodeURIComponent(readableError(error))}`);
-}
-
-function escapeHtml(value: string) {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
 }

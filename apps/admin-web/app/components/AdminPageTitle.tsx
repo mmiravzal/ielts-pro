@@ -7,9 +7,11 @@ const titles = [
   { href: "/students", label: "Students", note: "Access IDs, sessions, and progress" },
   { href: "/lessons", label: "Content Studio", note: "Lessons, skills, and publishing" },
   { href: "/student-control", label: "Student Control", note: "Activity, progress, and risk tracking" },
-  { href: "/full-tests/new", label: "Test Builder", note: "Build exam-style IELTS tests" },
+  { href: "/full-tests/new", label: "Test Builder", note: "HTML import wizard" },
   { href: "/full-tests", label: "Full Tests", note: "Published and draft exam bundles" },
-  { href: "/submissions", label: "Writing Review", note: "Score attempts and feedback" }
+  { href: "/submissions", label: "Writing Review", note: "Score attempts and feedback" },
+  { href: "/analytics", label: "Analytics", note: "Progress and content signals" },
+  { href: "/settings", label: "Settings", note: "URLs, defaults, and safe rendering" }
 ];
 
 export function AdminPageTitle() {

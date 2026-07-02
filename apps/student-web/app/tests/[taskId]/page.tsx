@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Badge, Button, Card, EmptyState, Input, QuestionNavigator } from "@ielts-pro/ui";
-import { createServerSupabaseClient, getPublishedTaskById, getSubmissionForTask, parseTaskContent, sanitizeTeacherHtml, type Question, type TaskContent } from "@ielts-pro/shared";
+import { createServerSupabaseClient, getPublishedTaskByIdForStudent, getStudentById, getSubmissionForTask, parseTaskContent, sanitizeTeacherHtml, type Question, type TaskContent } from "@ielts-pro/shared";
 import { requireStudentSession } from "@/lib/session";
 import { submitTaskAttempt } from "../../actions/attempts";
 import { StudentShell } from "../../components/StudentShell";
@@ -11,8 +11,10 @@ export default async function TestPage({ params }: { params: Promise<{ taskId: s
   const { taskId } = await params;
   const session = await requireStudentSession();
   const supabase = createServerSupabaseClient();
+  const student = await getStudentById(supabase, session.id);
+  const currentGroupId = student?.group_id ?? session.group_id;
   const [task, existingSubmission] = await Promise.all([
-    getPublishedTaskById(supabase, taskId),
+    getPublishedTaskByIdForStudent(supabase, taskId, currentGroupId),
     getSubmissionForTask(supabase, session.id, taskId)
   ]);
   if (!task) notFound();
@@ -72,7 +74,7 @@ export default async function TestPage({ params }: { params: Promise<{ taskId: s
                 <>
                   <p className="eyebrow">Reading passage</p>
                   <h2>Passage</h2>
-                  <div className="passage-content" dangerouslySetInnerHTML={{ __html: sanitizeTeacherHtml(content.passage_html || content.passages?.[0]?.html || "") }} />
+                  <div className="passage-content" dangerouslySetInnerHTML={{ __html: sanitizeTeacherHtml(content.passage_html || content.imported_html || content.passages?.[0]?.html || "") }} />
                 </>
               )}
             </section>

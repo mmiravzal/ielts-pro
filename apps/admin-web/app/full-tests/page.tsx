@@ -70,7 +70,7 @@ export default async function FullTestsPage() {
         ) : (
           <EmptyState
             title="No full tests yet"
-            body="Build a full test manually or import JSON from your question bank."
+            body="Import IELTS HTML in Test Builder. It will be saved as draft content before students can see it."
             action={<Link className="btn btn-primary" href="/full-tests/new">Open Builder</Link>}
           />
         )}

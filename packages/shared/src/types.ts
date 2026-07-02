@@ -3,7 +3,10 @@ export type Skill = "reading" | "listening" | "writing" | "full_test" | "vocabul
 export type Group = {
   id: string;
   name: string;
+  slug?: string | null;
+  order?: number | null;
   created_at?: string;
+  updated_at?: string;
 };
 
 export type Student = {
@@ -26,8 +29,12 @@ export type Lesson = {
   description: string | null;
   order: number | null;
   published: boolean | null;
+  status?: "draft" | "published" | "archived" | string | null;
   skill: Skill | string | null;
+  group_id?: string | null;
   created_at?: string;
+  updated_at?: string;
+  groups?: Pick<Group, "name" | "slug"> | null;
 };
 
 export type Task = {
@@ -41,14 +48,32 @@ export type Task = {
   audio_url?: string | null;
   html_url?: string | null;
   html_path?: string | null;
+  source_type?: string | null;
+  content_status?: "draft" | "assigned" | "published" | "archived" | string | null;
+  content_type?: string | null;
+  subtype?: string | null;
+  question_count?: number | null;
+  answer_count?: number | null;
+  audio_detected?: boolean | null;
+  warnings?: unknown;
+  archived_at?: string | null;
+  updated_at?: string;
   created_at?: string;
-  lessons?: Pick<Lesson, "title" | "published"> | null;
+  lessons?: Pick<Lesson, "title" | "published" | "group_id"> & { groups?: Pick<Group, "name" | "slug"> | null } | null;
 };
 
 export type NewTaskInput = Pick<Task, "lesson_id" | "title" | "skill" | "task_type" | "content" | "order"> & {
   audio_url?: string | null;
   html_url?: string | null;
   html_path?: string | null;
+  source_type?: string | null;
+  content_status?: string | null;
+  content_type?: string | null;
+  subtype?: string | null;
+  question_count?: number | null;
+  answer_count?: number | null;
+  audio_detected?: boolean | null;
+  warnings?: unknown;
 };
 
 export type Submission = {
@@ -112,6 +137,16 @@ export type TaskContent = {
     questions?: Question[];
   }>;
   questions?: Question[];
+  source_type?: string;
+  import_mode?: string;
+  import_structure?: string;
+  subtype?: string;
+  question_type?: string;
+  question_count?: number;
+  answer_count?: number;
+  warnings?: string[];
+  imported_html?: string;
+  preview_text?: string;
 };
 
 export type StudentSession = Pick<Student, "id" | "name" | "student_code" | "group_id"> & {

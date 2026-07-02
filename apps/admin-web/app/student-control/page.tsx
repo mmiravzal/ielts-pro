@@ -103,18 +103,20 @@ export default async function StudentControlPage() {
                     <p className="table-note">{latest ? `${latest.tasks?.skill || "task"} · ${formatDate(latest.submitted_at)}` : "Assign a test or lesson"}</p>
                   </td>
                   <td>
-                    <Badge tone={open ? "success" : "warning"}>
-                      {open ? "Open" : "Closed"}
-                    </Badge>
-                    <p className="table-note">{studentSessions.filter((session) => session.is_active !== false && !session.revoked_at).length} active device(s)</p>
-                  </td>
-                  <td>
-                    <div className="table-actions">
+                    <div className="status-control-stack">
+                      <Badge tone={open ? "success" : "warning"}>
+                        {open ? "Open" : "Closed"}
+                      </Badge>
                       <form action={toggleStudentAccessAction}>
                         <input type="hidden" name="student_id" value={student.id} />
                         <input type="hidden" name="open" value={String(!open)} />
                         <Button variant={open ? "danger" : "secondary"}>{open ? "Close access" : "Open access"}</Button>
                       </form>
+                    </div>
+                    <p className="table-note">{studentSessions.filter((session) => session.is_active !== false && !session.revoked_at).length} active device(s)</p>
+                  </td>
+                  <td>
+                    <div className="table-actions">
                       <form action={revokeAllDevicesAction}>
                         <input type="hidden" name="student_id" value={student.id} />
                         <Button variant="secondary">Revoke devices</Button>

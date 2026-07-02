@@ -1,6 +1,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Group, Lesson, NewTaskInput, Student, StudentDeviceSession, Submission, Task } from "./types.js";
 
+const DEFAULT_GROUPS = [
+  { name: "Introduction group", slug: "introduction", order: 1 },
+  { name: "Graduation group", slug: "graduation", order: 2 },
+  { name: "Pre-ielts group", slug: "pre-ielts", order: 3 }
+] as const;
+
 export async function getPublishedLessons(supabase: SupabaseClient) {
   const { data, error } = await supabase
     .from("lessons")
@@ -24,12 +30,49 @@ export async function getPublishedTasks(supabase: SupabaseClient) {
   return { lessons, tasks: (data || []) as Task[] };
 }
 
+export async function getPublishedTasksForStudent(supabase: SupabaseClient, groupId?: string | null) {
+  if (!groupId) return { lessons: [] as Lesson[], tasks: [] as Task[] };
+  try {
+    const { data: lessonsData, error: lessonError } = await supabase
+      .from("lessons")
+      .select("*,groups(name,slug)")
+      .eq("published", true)
+      .or(`group_id.eq.${groupId},group_id.is.null`)
+      .order("order", { ascending: true });
+    if (lessonError) throw lessonError;
+    const lessons = (lessonsData || []) as Lesson[];
+    const lessonIds = lessons.map((lesson) => lesson.id);
+    if (!lessonIds.length) return { lessons, tasks: [] as Task[] };
+    const { data: tasksData, error: tasksError } = await supabase
+      .from("tasks")
+      .select("*,lessons(title,published,group_id,groups(name,slug))")
+      .in("lesson_id", lessonIds)
+      .is("archived_at", null)
+      .order("order", { ascending: true });
+    if (tasksError) throw tasksError;
+    return { lessons, tasks: (tasksData || []) as Task[] };
+  } catch (error) {
+    if (!isMissingGroupLessonColumnError(error)) throw error;
+    return getPublishedTasks(supabase);
+  }
+}
+
 export async function getStudentByCode(supabase: SupabaseClient, name: string, code: string) {
   const { data, error } = await supabase
     .from("students")
     .select("*,groups(name)")
     .ilike("name", name)
     .eq("student_code", code)
+    .maybeSingle();
+  if (error) throw error;
+  return data as Student | null;
+}
+
+export async function getStudentById(supabase: SupabaseClient, studentId: string) {
+  const { data, error } = await supabase
+    .from("students")
+    .select("*,groups(name)")
+    .eq("id", studentId)
     .maybeSingle();
   if (error) throw error;
   return data as Student | null;
@@ -194,6 +237,26 @@ export async function getPublishedTaskById(supabase: SupabaseClient, taskId: str
   return typed;
 }
 
+export async function getPublishedTaskByIdForStudent(supabase: SupabaseClient, taskId: string, groupId?: string | null) {
+  if (!groupId) return null;
+  try {
+    const { data: task, error } = await supabase
+      .from("tasks")
+      .select("*,lessons(title,published,group_id,groups(name,slug))")
+      .eq("id", taskId)
+      .maybeSingle();
+    if (error) throw error;
+    const typed = task as Task | null;
+    if (!typed || typed.lessons?.published !== true) return null;
+    const lessonGroupId = typed.lessons?.group_id;
+    if (lessonGroupId && lessonGroupId !== groupId) return null;
+    return typed;
+  } catch (error) {
+    if (!isMissingGroupLessonColumnError(error)) throw error;
+    return getPublishedTaskById(supabase, taskId);
+  }
+}
+
 export async function getSubmissionForTask(supabase: SupabaseClient, studentId: string, taskId: string) {
   const { data, error } = await supabase
     .from("submissions")
@@ -245,9 +308,29 @@ export async function getAdminDashboardStats(supabase: SupabaseClient) {
 }
 
 export async function getAllGroups(supabase: SupabaseClient) {
-  const { data, error } = await supabase.from("groups").select("*").order("name", { ascending: true });
+  await ensureDefaultGroups(supabase);
+  const { data, error } = await supabase.from("groups").select("*").order("order", { ascending: true });
   if (error) throw error;
   return (data || []) as Group[];
+}
+
+export async function ensureDefaultGroups(supabase: SupabaseClient) {
+  const { error } = await supabase
+    .from("groups")
+    .upsert(DEFAULT_GROUPS, { onConflict: "slug", ignoreDuplicates: false });
+  if (error && isMissingGroupSlugColumnError(error)) return;
+  if (error) throw error;
+}
+
+export async function createGroup(supabase: SupabaseClient, input: { name: string; slug?: string | null; order?: number | null }) {
+  const slug = input.slug || slugify(input.name);
+  const { data, error } = await supabase
+    .from("groups")
+    .upsert({ name: input.name, slug, order: input.order ?? 10, updated_at: new Date().toISOString() }, { onConflict: "slug" })
+    .select()
+    .single();
+  if (error) throw error;
+  return data as Group;
 }
 
 export async function getAllStudents(supabase: SupabaseClient) {
@@ -257,33 +340,119 @@ export async function getAllStudents(supabase: SupabaseClient) {
 }
 
 export async function getAllLessons(supabase: SupabaseClient) {
-  const { data, error } = await supabase.from("lessons").select("*").order("order", { ascending: true });
-  if (error) throw error;
-  return (data || []) as Lesson[];
+  const { data, error } = await supabase.from("lessons").select("*,groups(name,slug)").order("order", { ascending: true });
+  if (!error) return (data || []) as Lesson[];
+  if (!isMissingGroupLessonColumnError(error)) throw error;
+  const fallback = await supabase.from("lessons").select("*").order("order", { ascending: true });
+  if (fallback.error) throw fallback.error;
+  return (fallback.data || []) as Lesson[];
 }
 
 export async function getAllTasks(supabase: SupabaseClient) {
-  const { data, error } = await supabase.from("tasks").select("*,lessons(title,published)").order("order", { ascending: true });
-  if (error) throw error;
-  return (data || []) as Task[];
+  const { data, error } = await supabase
+    .from("tasks")
+    .select("*,lessons(title,published,group_id,groups(name,slug))")
+    .order("order", { ascending: true });
+  if (!error) return (data || []) as Task[];
+  if (!isMissingContentMetadataColumnError(error) && !isMissingGroupLessonColumnError(error)) throw error;
+  const fallback = await supabase.from("tasks").select("*,lessons(title,published)").order("order", { ascending: true });
+  if (fallback.error) throw fallback.error;
+  return (fallback.data || []) as Task[];
 }
 
-export async function createLesson(supabase: SupabaseClient, input: Pick<Lesson, "title" | "description" | "order" | "published" | "skill">) {
-  const { data, error } = await supabase.from("lessons").insert(input).select().single();
-  if (error) throw error;
-  return data as Lesson;
+export async function createLesson(supabase: SupabaseClient, input: Pick<Lesson, "title" | "description" | "order" | "published" | "skill"> & { group_id?: string | null; status?: string | null }) {
+  const payload = {
+    ...input,
+    status: input.status ?? (input.published ? "published" : "draft")
+  };
+  const { data, error } = await supabase.from("lessons").insert(payload).select().single();
+  if (!error) return data as Lesson;
+  if (!isMissingGroupLessonColumnError(error)) throw error;
+  const { group_id: _groupId, status: _status, ...fallbackInput } = input;
+  const fallback = await supabase.from("lessons").insert(fallbackInput).select().single();
+  if (fallback.error) throw fallback.error;
+  return fallback.data as Lesson;
 }
 
 export async function createTask(supabase: SupabaseClient, input: NewTaskInput) {
   const { data, error } = await supabase.from("tasks").insert(input).select().single();
-  if (error) throw error;
-  return data as Task;
+  if (!error) return data as Task;
+  if (!isMissingContentMetadataColumnError(error)) throw error;
+  const {
+    source_type: _sourceType,
+    content_status: _contentStatus,
+    content_type: _contentType,
+    subtype: _subtype,
+    question_count: _questionCount,
+    answer_count: _answerCount,
+    audio_detected: _audioDetected,
+    warnings: _warnings,
+    ...fallbackInput
+  } = input;
+  const fallback = await supabase.from("tasks").insert(fallbackInput).select().single();
+  if (fallback.error) throw fallback.error;
+  return fallback.data as Task;
 }
 
-export async function updateLesson(supabase: SupabaseClient, id: string, input: Partial<Pick<Lesson, "title" | "description" | "order" | "published" | "skill">>) {
-  const { data, error } = await supabase.from("lessons").update(input).eq("id", id).select().single();
-  if (error) throw error;
-  return data as Lesson;
+export async function updateLesson(supabase: SupabaseClient, id: string, input: Partial<Pick<Lesson, "title" | "description" | "order" | "published" | "skill" | "group_id" | "status">>) {
+  const payload = { ...input, updated_at: new Date().toISOString() };
+  if (input.published != null && !input.status) payload.status = input.published ? "published" : "draft";
+  const { data, error } = await supabase.from("lessons").update(payload).eq("id", id).select().single();
+  if (!error) return data as Lesson;
+  if (!isMissingGroupLessonColumnError(error)) throw error;
+  const { group_id: _groupId, status: _status, updated_at: _updatedAt, ...fallbackInput } = payload;
+  const fallback = await supabase.from("lessons").update(fallbackInput).eq("id", id).select().single();
+  if (fallback.error) throw fallback.error;
+  return fallback.data as Lesson;
+}
+
+export async function updateTask(supabase: SupabaseClient, id: string, input: Partial<NewTaskInput> & { archived_at?: string | null }) {
+  const payload = { ...input, updated_at: new Date().toISOString() };
+  const { data, error } = await supabase.from("tasks").update(payload).eq("id", id).select().single();
+  if (!error) return data as Task;
+  if (!isMissingContentMetadataColumnError(error)) throw error;
+  const {
+    source_type: _sourceType,
+    content_status: _contentStatus,
+    content_type: _contentType,
+    subtype: _subtype,
+    question_count: _questionCount,
+    answer_count: _answerCount,
+    audio_detected: _audioDetected,
+    warnings: _warnings,
+    archived_at: _archivedAt,
+    updated_at: _updatedAt,
+    ...fallbackInput
+  } = payload;
+  const fallback = await supabase.from("tasks").update(fallbackInput).eq("id", id).select().single();
+  if (fallback.error) throw fallback.error;
+  return fallback.data as Task;
+}
+
+export async function updateTasksForLessonStatus(supabase: SupabaseClient, lessonId: string, contentStatus: string) {
+  const payload = { content_status: contentStatus, updated_at: new Date().toISOString() };
+  const { error } = await supabase.from("tasks").update(payload).eq("lesson_id", lessonId);
+  if (!error) return;
+  if (!isMissingContentMetadataColumnError(error)) throw error;
+}
+
+export async function updateStudentGroup(supabase: SupabaseClient, studentId: string, groupId: string | null) {
+  const { data, error } = await supabase
+    .from("students")
+    .update({ group_id: groupId, updated_at: new Date().toISOString() })
+    .eq("id", studentId)
+    .select("*,groups(name)")
+    .single();
+  if (!error) return data as Student;
+  if (!isMissingAccessColumnsError(error)) throw error;
+  const fallback = await supabase
+    .from("students")
+    .update({ group_id: groupId })
+    .eq("id", studentId)
+    .select("*,groups(name)")
+    .single();
+  if (fallback.error) throw fallback.error;
+  return fallback.data as Student;
 }
 
 export async function getWritingSubmissions(supabase: SupabaseClient) {
@@ -310,4 +479,40 @@ function isMissingAccessColumnsError(error: unknown) {
   const message = String((error as { message?: string })?.message || "");
   const code = String((error as { code?: string })?.code || "");
   return code === "PGRST204" || message.includes("is_active") || message.includes("access_status") || message.includes("max_devices");
+}
+
+function isMissingGroupSlugColumnError(error: unknown) {
+  const message = String((error as { message?: string })?.message || "");
+  const code = String((error as { code?: string })?.code || "");
+  return code === "PGRST204" || message.includes("slug") || message.includes("on conflict");
+}
+
+function isMissingGroupLessonColumnError(error: unknown) {
+  const message = String((error as { message?: string })?.message || "");
+  const code = String((error as { code?: string })?.code || "");
+  return code === "PGRST204" || message.includes("group_id") || message.includes("status") || message.includes("lessons_groups");
+}
+
+function isMissingContentMetadataColumnError(error: unknown) {
+  const message = String((error as { message?: string })?.message || "");
+  const code = String((error as { code?: string })?.code || "");
+  return (
+    code === "PGRST204" ||
+    message.includes("source_type") ||
+    message.includes("content_status") ||
+    message.includes("content_type") ||
+    message.includes("question_count") ||
+    message.includes("answer_count") ||
+    message.includes("audio_detected") ||
+    message.includes("warnings") ||
+    message.includes("archived_at")
+  );
+}
+
+function slugify(value: string) {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "group";
 }

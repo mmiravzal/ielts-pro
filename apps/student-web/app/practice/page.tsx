@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Badge, EmptyState, LinkButton, ProgressBar, StatCard, TestCard } from "@ielts-pro/ui";
-import { createServerSupabaseClient, getPublishedTasks, getStudentSubmissions } from "@ielts-pro/shared";
+import { createServerSupabaseClient, getPublishedTasksForStudent, getStudentById, getStudentSubmissions } from "@ielts-pro/shared";
 import { requireStudentSession } from "@/lib/session";
 import { StudentShell } from "../components/StudentShell";
 
@@ -38,8 +38,10 @@ const skillCards = [
 export default async function PracticePage() {
   const session = await requireStudentSession();
   const supabase = createServerSupabaseClient();
+  const student = await getStudentById(supabase, session.id);
+  const currentGroupId = student?.group_id ?? session.group_id;
   const [{ lessons, tasks }, submissions] = await Promise.all([
-    getPublishedTasks(supabase),
+    getPublishedTasksForStudent(supabase, currentGroupId),
     getStudentSubmissions(supabase, session.id)
   ]);
   const completedIds = new Set(submissions.map((submission) => submission.task_id));
@@ -55,7 +57,7 @@ export default async function PracticePage() {
           <div>
             <p className="eyebrow">Practice tests</p>
             <h1>Choose your IELTS skill and continue your plan.</h1>
-            <p className="muted">Work through published teacher materials by skill, track attempts, and keep writing feedback in one place.</p>
+            <p className="muted">{student?.groups?.name ? `Showing lessons assigned to ${student.groups.name}.` : "No group assigned yet. Ask your teacher to place you into a study group."}</p>
             <div className="hero-actions">
               {nextTask ? <LinkButton href={`/tests/${nextTask.id}`}>Continue next task</LinkButton> : null}
               <LinkButton href="/progress" variant="secondary">Result history</LinkButton>
@@ -97,7 +99,7 @@ export default async function PracticePage() {
             <Link href="/dashboard">Dashboard</Link>
           </div>
           <div className="test-list">
-            {tasks.slice(0, 8).map((task) => (
+            {!currentGroupId ? <EmptyState title="No group assigned yet" body="Your teacher needs to assign your access ID to a group before practice appears here." /> : tasks.slice(0, 8).map((task) => (
               <TestCard
                 key={task.id}
                 tone={toneFor(task.skill)}
@@ -108,7 +110,7 @@ export default async function PracticePage() {
                 action={<LinkButton href={`/tests/${task.id}`}>{completedIds.has(task.id) ? "Review" : "Start"}</LinkButton>}
               />
             ))}
-            {!tasks.length ? <EmptyState title="No practice yet" body="Your teacher has not published IELTS practice work yet." /> : null}
+            {currentGroupId && !tasks.length ? <EmptyState title="No practice yet" body="Your teacher has not published IELTS practice work for your group yet." /> : null}
           </div>
         </section>
       </main>

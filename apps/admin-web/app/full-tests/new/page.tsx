@@ -1,195 +1,238 @@
 import Link from "next/link";
-import { Badge, Button, Card, ErrorState, Input, Select, Textarea } from "@ielts-pro/ui";
+import { Badge, Button, Card, ErrorState, Input, Select } from "@ielts-pro/ui";
 import { requireAdminSession } from "@/lib/session";
 import { AdminShell } from "../../components/AdminShell";
-import { createFullTestDraftAction, importFullTestJsonAction, importSkillJsonAction } from "../../actions/lms";
+import { importHtmlContentAction } from "../../actions/lms";
 
-const sampleImport = `{
-  "title": "Academic Full Test 1",
-  "description": "Reading, listening, and writing practice",
-  "published": false,
-  "duration_minutes": 180,
-  "difficulty": "academic",
-  "sections": [
-    {
-      "skill": "reading",
-      "title": "Reading Passage 1",
-      "passage_html": "<h2>Urban transport</h2><p>Passage text...</p>",
-      "questions": [
-        {
-          "type": "mcq",
-          "question": "What is the main idea?",
-          "options": ["Transport cost", "City planning", "Rail history"],
-          "answer": "B"
-        }
-      ]
-    },
-    {
-      "skill": "listening",
-      "title": "Listening Section 1",
-      "audio_url": "https://example.com/audio.mp3",
-      "questions": [
-        { "type": "short_answer", "question": "What time does it start?", "answer": "9:30" }
-      ]
-    },
-    {
-      "skill": "writing",
-      "title": "Writing Task 2",
-      "prompt": "Some people believe..."
-    }
-  ]
-}`;
+const readingTypes = [
+  "Matching Headings",
+  "True / False / Not Given",
+  "Yes / No / Not Given",
+  "Multiple Choice",
+  "Matching Information",
+  "Matching Features",
+  "Matching Sentence Endings",
+  "Sentence Completion",
+  "Summary Completion",
+  "Note Completion",
+  "Table Completion",
+  "Flow-chart Completion",
+  "Diagram Label Completion",
+  "Short Answer Questions"
+];
 
-const readingImport = `{
-  "title": "Reading Passage 1",
-  "passage_html": "<h2>The Davies Sisters</h2><p>Passage text...</p>",
-  "questions": [
-    {
-      "type": "note_completion",
-      "question": "Complete the notes below.",
-      "items": [
-        { "label": "their grandfather's wealth came from ___ and transportation businesses", "answer": "coal" }
-      ]
-    }
-  ]
-}`;
+const listeningTypes = [
+  "Form Completion",
+  "Note Completion",
+  "Table Completion",
+  "Flow-chart Completion",
+  "Multiple Choice",
+  "Matching",
+  "Plan / Map / Diagram Labelling",
+  "Sentence Completion",
+  "Short Answer Questions"
+];
 
-const listeningImport = `{
-  "title": "Listening Section 1",
-  "audio_url": "https://example.com/listening.mp3",
-  "questions": [
-    {
-      "type": "short_answer",
-      "question": "What time does the session begin?",
-      "answer": "9:30"
-    }
-  ]
-}`;
-
-const writingImport = `{
-  "title": "Writing Task 2",
-  "prompt": "Some people believe that online learning is more effective than classroom learning. Discuss both views and give your opinion."
-}`;
-
-export default async function NewFullTestPage({ searchParams }: { searchParams?: Promise<{ error?: string }> }) {
+export default async function NewFullTestPage({
+  searchParams
+}: {
+  searchParams?: Promise<{ error?: string; saved?: string; task?: string; name?: string; skill?: string; questions?: string; answers?: string; audio?: string; warnings?: string }>;
+}) {
   const admin = await requireAdminSession();
   const params = searchParams ? await searchParams : {};
   const error = params.error ? decodeURIComponent(params.error) : "";
+  const saved = params.saved === "1";
 
   return (
     <AdminShell email={admin.email}>
-      <div className="page-head">
+      <div className="page-head page-head-hero builder-hero-light">
         <div>
-          <p className="eyebrow">Full test builder</p>
-          <h1>Create IELTS exam practice</h1>
-          <p className="muted">Build a student-ready full test with Reading, Listening audio, Writing prompts, and objective answer keys.</p>
+          <p className="eyebrow">Test Builder</p>
+          <h1>Import IELTS HTML into the content library.</h1>
+          <p className="muted">Upload HTML only. The item is saved as a draft in Content Studio and stays hidden until you attach it to a published group lesson.</p>
         </div>
-        <Link className="btn btn-secondary" href="/full-tests">Back to library</Link>
+        <Link className="btn btn-secondary" href="/lessons">Open Content Studio</Link>
       </div>
 
-      {error ? <ErrorState title="Builder error" body={error} /> : null}
+      {error ? <ErrorState title="Import failed" body={error} /> : null}
 
-      <div className="builder-layout">
-        <form action={createFullTestDraftAction} className="builder-form">
-          <Card className="builder-card">
-            <div className="builder-step"><span>1</span><div><Badge tone="full">Full test</Badge><h2>Exam setup</h2></div></div>
-            <div className="two-col">
-              <label>Title<Input name="title" required placeholder="Academic Full Test 1" /></label>
-              <label>Difficulty<Select name="difficulty" defaultValue="academic"><option value="academic">Academic</option><option value="general">General Training</option><option value="foundation">Foundation</option></Select></label>
-            </div>
-            <label>Description<Textarea name="description" placeholder="Short teacher note shown inside the admin studio." /></label>
-            <div className="two-col">
-              <label>Duration minutes<Input name="duration_minutes" type="number" defaultValue={180} min={1} /></label>
-              <label>Lesson order<Input name="order" type="number" defaultValue={1} min={1} /></label>
-            </div>
-            <label>Student instructions<Textarea name="instructions" placeholder="Complete all sections before submitting." /></label>
-            <label className="check-row"><input type="checkbox" name="published" /> Publish immediately after saving</label>
-          </Card>
+      {saved ? (
+        <Card className="panel import-success-panel">
+          <div>
+            <Badge tone="success">Saved to Content Studio</Badge>
+            <h2>{params.name || "Imported HTML content"}</h2>
+            <p className="muted">Draft content was created. It is not visible to students until a teacher attaches it to a lesson and publishes that lesson.</p>
+          </div>
+          <div className="parsed-summary-grid">
+            <Summary label="Skill" value={labelFor(params.skill || "reading")} />
+            <Summary label="Questions" value={params.questions || "0"} />
+            <Summary label="Answer keys" value={params.answers || "0"} />
+            <Summary label="Audio" value={params.audio === "yes" ? "Detected" : "Not detected"} />
+            <Summary label="Warnings" value={params.warnings || "0"} />
+          </div>
+          <div className="success-actions">
+            <Link className="btn btn-primary" href="/lessons">Open in Content Studio</Link>
+            <Link className="btn btn-secondary" href="/lessons#lesson-builder">Attach to lesson now</Link>
+            <Link className="btn btn-secondary" href="/full-tests/new">Import another</Link>
+          </div>
+        </Card>
+      ) : null}
 
-          <Card className="builder-card">
-            <div className="builder-step"><span>2</span><div><Badge tone="reading">Reading</Badge><h2>Reading section</h2></div></div>
-            <label>Section title<Input name="reading_title" defaultValue="Reading Passage 1" /></label>
-            <label>Passage text<Textarea name="reading_passage" placeholder="Paste the reading passage. Paragraph breaks are preserved for the student view." /></label>
-            <div className="two-col">
-              <label>Question type<Select name="reading_question_type" defaultValue="note_completion"><option value="note_completion">Note completion</option><option value="mcq">Multiple choice</option><option value="short_answer">Short answer</option><option value="summary_completion">Summary completion</option><option value="table_completion">Table completion</option><option value="mcq_multi">Multiple answers</option></Select></label>
-              <label>Question<Input name="reading_question" placeholder="Complete the notes below." /></label>
+      <div className="test-builder-grid">
+        <section className="wizard-main">
+          <Card className="panel wizard-card">
+            <div className="wizard-steps" aria-label="Import steps">
+              <span className="is-active">1 Choose mode</span>
+              <span>2 Choose structure</span>
+              <span>3 Upload HTML</span>
+              <span>4 Review summary</span>
+              <span>5 Save draft</span>
             </div>
-            <label>Options, one per line<Textarea name="reading_options" placeholder={"Use for MCQ only:\nA. Explain a problem\nB. Compare two ideas\nC. Describe a solution"} /></label>
-            <label>Gap lines for completion questions<Textarea name="reading_note_items" placeholder={"their grandfather's wealth came from ___ and transportation businesses\ntheir ___ was designed to encourage collecting art"} /></label>
-            <label>Completion answers, one per line<Textarea name="reading_note_answers" placeholder={"coal\neducation"} /></label>
-            <label>Correct answer<Input name="reading_answer" placeholder="A" /></label>
-          </Card>
 
-          <Card className="builder-card">
-            <div className="builder-step"><span>3</span><div><Badge tone="listening">Listening</Badge><h2>Listening section</h2></div></div>
-            <label>Section title<Input name="listening_title" defaultValue="Listening Section 1" /></label>
-            <div className="two-col">
-              <label>Upload audio<Input name="audio_file" type="file" accept="audio/*" /></label>
-              <label>Or paste audio URL<Input name="audio_url" placeholder="https://..." /></label>
-            </div>
-            <label>Transcript / teacher note<Textarea name="listening_transcript" placeholder="Optional transcript for internal checking." /></label>
-            <div className="two-col">
-              <label>Question type<Select name="listening_question_type" defaultValue="short_answer"><option value="short_answer">Short answer</option><option value="note_completion">Note completion</option><option value="mcq">Multiple choice</option><option value="summary_completion">Summary completion</option><option value="table_completion">Table completion</option><option value="mcq_multi">Multiple answers</option></Select></label>
-              <label>Question<Input name="listening_question" placeholder="What time does the session begin?" /></label>
-            </div>
-            <label>Options, one per line<Textarea name="listening_options" placeholder={"Use for MCQ only:\nA. 9:00\nB. 9:30\nC. 10:00"} /></label>
-            <label>Gap lines for completion questions<Textarea name="listening_note_items" placeholder={"The session begins at ___\nStudents should bring ___"} /></label>
-            <label>Completion answers, one per line<Textarea name="listening_note_answers" placeholder={"9:30\npassport"} /></label>
-            <label>Correct answer<Input name="listening_answer" placeholder="B" /></label>
-          </Card>
+            <form action={importHtmlContentAction} className="html-import-form" encType="multipart/form-data">
+              <section className="builder-section">
+                <div>
+                  <p className="eyebrow">Step 1</p>
+                  <h2>Import mode</h2>
+                  <p className="muted">Choose how this content should be organized in Content Studio.</p>
+                </div>
+                <div className="mode-grid">
+                  <label className="mode-option">
+                    <input type="radio" name="import_mode" value="full_mock" />
+                    <strong>Full Mock</strong>
+                    <span>Complete mock or section-by-section mock upload.</span>
+                  </label>
+                  <label className="mode-option">
+                    <input type="radio" name="import_mode" value="full_test" />
+                    <strong>Full Test</strong>
+                    <span>Full Reading, Listening, Writing, Speaking, or full IELTS bundle.</span>
+                  </label>
+                  <label className="mode-option">
+                    <input type="radio" name="import_mode" value="separate_skill" defaultChecked />
+                    <strong>Separate Skill</strong>
+                    <span>One passage, part, task, or speaking prompt.</span>
+                  </label>
+                </div>
+              </section>
 
-          <Card className="builder-card">
-            <div className="builder-step"><span>4</span><div><Badge tone="writing">Writing</Badge><h2>Writing section</h2></div></div>
-            <label>Writing instructions<Textarea name="writing_instructions" placeholder="Answer both tasks. Task 2 should be at least 250 words." /></label>
-            <label>Task 1 prompt<Textarea name="writing_task_1" placeholder="The chart below shows..." /></label>
-            <label>Task 2 prompt<Textarea name="writing_task_2" placeholder="Some people think..." /></label>
-          </Card>
+              <section className="builder-section builder-section-compact">
+                <div>
+                  <p className="eyebrow">Step 2</p>
+                  <h2>Structure</h2>
+                </div>
+                <div className="builder-fields-grid">
+                  <label>
+                    Skill
+                    <Select name="skill" defaultValue="reading">
+                      <option value="reading">Reading</option>
+                      <option value="listening">Listening</option>
+                      <option value="writing">Writing</option>
+                      <option value="full_test">Full IELTS Test</option>
+                    </Select>
+                  </label>
+                  <label>
+                    Structure
+                    <Select name="import_structure" defaultValue="reading_passage_1">
+                      <optgroup label="Reading">
+                        <option value="reading_full">Full Reading</option>
+                        <option value="reading_passage_1">Reading Passage 1</option>
+                        <option value="reading_passage_2">Reading Passage 2</option>
+                        <option value="reading_passage_3">Reading Passage 3</option>
+                      </optgroup>
+                      <optgroup label="Listening">
+                        <option value="listening_full">Full Listening</option>
+                        <option value="listening_part_1">Listening Part 1</option>
+                        <option value="listening_part_2">Listening Part 2</option>
+                        <option value="listening_part_3">Listening Part 3</option>
+                        <option value="listening_part_4">Listening Part 4</option>
+                      </optgroup>
+                      <optgroup label="Writing">
+                        <option value="writing_task_1">Writing Task 1</option>
+                        <option value="writing_task_2">Writing Task 2</option>
+                        <option value="writing_both_tasks">Writing Tasks 1 and 2</option>
+                      </optgroup>
+                      <optgroup label="Full">
+                        <option value="full_mock_one_file">One full mock HTML</option>
+                        <option value="full_ielts_test">Full IELTS Test</option>
+                      </optgroup>
+                    </Select>
+                  </label>
+                  <label>
+                    Question type
+                    <Select name="question_type" defaultValue="Note Completion">
+                      <optgroup label="Reading">
+                        {readingTypes.map((type) => <option value={type} key={type}>{type}</option>)}
+                      </optgroup>
+                      <optgroup label="Listening">
+                        {listeningTypes.map((type) => <option value={type} key={type}>{type}</option>)}
+                      </optgroup>
+                    </Select>
+                  </label>
+                  <label>
+                    Subtype label
+                    <Input name="subtype" placeholder="Passage 1, Part 3, Task 2..." />
+                  </label>
+                </div>
+              </section>
 
-          <Card className="builder-card publish-card">
-            <div>
-              <p className="eyebrow">Save</p>
-              <h2>Student visibility checklist</h2>
-              <ul className="studio-list">
-                <li>Draft tests stay hidden until the lesson is published.</li>
-                <li>Published tests appear in the student dashboard automatically.</li>
-                <li>Direct preview uses `NEXT_PUBLIC_STUDENT_APP_URL` in production.</li>
-              </ul>
-            </div>
-            <Button type="submit">Save full test</Button>
-          </Card>
-        </form>
+              <section className="builder-section">
+                <div>
+                  <p className="eyebrow">Step 3</p>
+                  <h2>HTML upload</h2>
+                  <p className="muted">Only `.html` or `.htm` is accepted. The parser strips scripts and unsafe event handlers before saving.</p>
+                </div>
+                <div className="file-upload-card">
+                  <span aria-hidden="true">HTML</span>
+                  <div>
+                    <strong>Drop or choose an IELTS HTML file</strong>
+                    <small>JSON, PDF, DOCX, TXT are rejected.</small>
+                  </div>
+                  <Input name="html_file" type="file" accept=".html,.htm,text/html" required />
+                </div>
+                <div className="builder-fields-grid two-fields">
+                  <label>
+                    Content name
+                    <Input name="content_name" placeholder="RT11 Reading Passage 1" />
+                  </label>
+                  <label>
+                    Listening audio URL
+                    <Input name="manual_audio_url" placeholder="Optional if audio is not inside HTML" />
+                  </label>
+                </div>
+              </section>
 
-        <aside className="builder-aside">
-          <Card className="panel">
-            <p className="eyebrow">Import</p>
-            <h2>Full test JSON</h2>
-            <p className="muted">Use this only when the JSON already contains all sections. If one section is broken, use the separate skill imports below.</p>
-            <form action={importFullTestJsonAction} className="form-stack">
-              <label>Upload JSON<Input name="json_file" type="file" accept="application/json,.json" /></label>
-              <label>Paste JSON<Textarea name="import_json" defaultValue={sampleImport} /></label>
-              <Button type="submit" variant="secondary">Import full test</Button>
+              <section className="builder-section save-draft-section">
+                <div>
+                  <p className="eyebrow">Step 4-5</p>
+                  <h2>Save as draft content</h2>
+                  <p className="muted">After import, check the parsed summary above, then attach it to a group lesson inside Content Studio.</p>
+                </div>
+                <Button type="submit">Import HTML to Content Studio</Button>
+              </section>
             </form>
           </Card>
+        </section>
 
-          <Card className="panel split-imports">
-            <p className="eyebrow">Separate imports</p>
-            <h2>Import by skill</h2>
-            <p className="muted">Reading, Listening, and Writing can be created separately, so errors are easier to edit.</p>
-            <SkillImportForm skill="reading" label="Reading JSON" sample={readingImport} />
-            <SkillImportForm skill="listening" label="Listening JSON" sample={listeningImport} />
-            <SkillImportForm skill="writing" label="Writing JSON" sample={writingImport} />
-          </Card>
-
+        <aside className="wizard-side">
           <Card className="panel">
-            <p className="eyebrow">Quality gate</p>
-            <h2>Before publish</h2>
+            <p className="eyebrow">Visibility rule</p>
+            <h2>Draft first, publish later.</h2>
             <div className="checklist">
-              <span>Reading has passage text and answer key.</span>
-              <span>Listening has audio URL or uploaded audio file.</span>
-              <span>Writing prompts are visible in the student test screen.</span>
-              <span>Student preview opens after the lesson is published.</span>
+              <span>Import creates draft content.</span>
+              <span>Draft content is hidden from Student Site.</span>
+              <span>Attach content to a lesson in Content Studio.</span>
+              <span>Publish lesson after group and content are checked.</span>
             </div>
-            <Link className="btn btn-secondary" href="/lessons">Check Visibility</Link>
+          </Card>
+          <Card className="panel">
+            <p className="eyebrow">Parser checks</p>
+            <h2>What gets detected</h2>
+            <div className="parser-checks">
+              <span>Title from title/h1/h2/file name</span>
+              <span>Question inputs and numbered lines</span>
+              <span>Answer-key markers and data-answer</span>
+              <span>Audio from audio/source/direct mp3 links</span>
+            </div>
           </Card>
         </aside>
       </div>
@@ -197,14 +240,19 @@ export default async function NewFullTestPage({ searchParams }: { searchParams?:
   );
 }
 
-function SkillImportForm({ skill, label, sample }: { skill: "reading" | "listening" | "writing"; label: string; sample: string }) {
+function Summary({ label, value }: { label: string; value: string }) {
   return (
-    <form action={importSkillJsonAction} className="skill-import-form">
-      <input type="hidden" name="skill" value={skill} />
-      <h3>{label}</h3>
-      <label>Upload JSON<Input name={`${skill}_json_file`} type="file" accept="application/json,.json" /></label>
-      <label>Paste JSON<Textarea name={`${skill}_import_json`} defaultValue={sample} /></label>
-      <Button type="submit" variant="secondary">Import {skill}</Button>
-    </form>
+    <div className="parsed-summary">
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
   );
+}
+
+function labelFor(skill: string) {
+  if (skill === "reading") return "Reading";
+  if (skill === "listening") return "Listening";
+  if (skill === "writing") return "Writing";
+  if (skill === "full_test") return "Full Test";
+  return skill;
 }

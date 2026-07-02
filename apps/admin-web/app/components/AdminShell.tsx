@@ -10,9 +10,9 @@ export function AdminShell({ email, children }: { email: string; children: React
       <div className="admin-topbar">
         <AdminPageTitle />
         <div className="admin-topbar-actions">
-          <Link href="/students">Student access</Link>
-          <Link href="/full-tests/new">New test</Link>
-          <Link href="/student-control">Student control</Link>
+          <Link href="/full-tests/new">New content</Link>
+          <Link href="/lessons#lesson-builder">New lesson</Link>
+          <Link href="/students">Add student</Link>
         </div>
       </div>
       <div className="admin-content">

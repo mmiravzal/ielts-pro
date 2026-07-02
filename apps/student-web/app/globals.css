@@ -58,7 +58,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
 .btn-danger { background: var(--rose); color: #fff; }
 
 .card {
-  background: rgba(16, 31, 52, .82);
+  background: rgba(18, 36, 60, .86);
   border: 1px solid var(--line);
   border-radius: 8px;
   box-shadow: var(--soft-shadow);
@@ -230,10 +230,11 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
   transform: translateY(-1px);
 }
 .student-nav a.active {
-  color: #061526;
+  color: #062033;
   background: linear-gradient(135deg, #8bdcff, #e0f7ff);
   box-shadow: 0 12px 24px rgba(34, 167, 242, .18);
 }
+.student-nav a.active:visited { color: #062033; }
 .student-nav .btn-ghost { min-height: 0; border: 0; }
 .student-chip {
   border: 1px solid var(--line);
@@ -257,7 +258,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
   align-items: center;
   margin-bottom: 18px;
   background:
-    linear-gradient(135deg, rgba(10,27,47,.98), rgba(15,86,128,.86)),
+    linear-gradient(135deg, rgba(12,34,57,.98), rgba(18,103,150,.86)),
     var(--navy);
   color: #fff;
   overflow: hidden;
@@ -380,7 +381,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
   border: 1px solid var(--line);
   border-top: 5px solid var(--blue);
   border-radius: 8px;
-  background: rgba(15, 23, 42, .78);
+  background: rgba(18, 36, 60, .84);
   padding: 18px;
   min-height: 170px;
   display: grid;

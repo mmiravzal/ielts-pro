@@ -1,14 +1,15 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { createServerSupabaseClient, getPublishedTaskById, gradeQuestions, parseTaskContent, submitAttempt, type Question, type TaskContent } from "@ielts-pro/shared";
+import { createServerSupabaseClient, getPublishedTaskByIdForStudent, getStudentById, gradeQuestions, parseTaskContent, submitAttempt, type Question, type TaskContent } from "@ielts-pro/shared";
 import { requireStudentSession } from "@/lib/session";
 
 export async function submitTaskAttempt(formData: FormData) {
   const session = await requireStudentSession();
   const taskId = String(formData.get("taskId") || "");
   const supabase = createServerSupabaseClient();
-  const task = await getPublishedTaskById(supabase, taskId);
+  const student = await getStudentById(supabase, session.id);
+  const task = await getPublishedTaskByIdForStudent(supabase, taskId, student?.group_id ?? session.group_id);
   if (!task) redirect("/dashboard?error=unavailable");
 
   const content = parseTaskContent<TaskContent>(task.content, { questions: [] });

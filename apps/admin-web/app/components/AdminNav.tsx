@@ -6,10 +6,12 @@ import { usePathname } from "next/navigation";
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: "D" },
   { href: "/students", label: "Students", icon: "S" },
-  { href: "/lessons", label: "Content Studio", icon: "C" },
   { href: "/student-control", label: "Student Control", icon: "P" },
+  { href: "/lessons", label: "Content Studio", icon: "C" },
   { href: "/full-tests/new", label: "Test Builder", icon: "B" },
-  { href: "/submissions", label: "Writing Review", icon: "W" }
+  { href: "/submissions", label: "Writing Review", icon: "W" },
+  { href: "/analytics", label: "Analytics", icon: "A" },
+  { href: "/settings", label: "Settings", icon: "T" }
 ];
 
 export function AdminNav() {

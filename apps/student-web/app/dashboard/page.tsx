@@ -1,15 +1,17 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Badge, Card, EmptyState, LinkButton, ProgressBar, StatCard, TestCard } from "@ielts-pro/ui";
-import { createServerSupabaseClient, getPublishedTasks, getStudentSubmissions } from "@ielts-pro/shared";
+import { createServerSupabaseClient, getPublishedTasksForStudent, getStudentById, getStudentSubmissions } from "@ielts-pro/shared";
 import { requireStudentSession } from "@/lib/session";
 import { StudentShell } from "../components/StudentShell";
 
 export default async function DashboardPage() {
   const session = await requireStudentSession();
   const supabase = createServerSupabaseClient();
+  const student = await getStudentById(supabase, session.id);
+  const currentGroupId = student?.group_id ?? session.group_id;
   const [{ lessons, tasks }, submissions] = await Promise.all([
-    getPublishedTasks(supabase),
+    getPublishedTasksForStudent(supabase, currentGroupId),
     getStudentSubmissions(supabase, session.id)
   ]);
   const completedIds = new Set(submissions.map((submission) => submission.task_id));
@@ -29,7 +31,7 @@ export default async function DashboardPage() {
           <div>
             <p className="eyebrow">Student practice plan</p>
             <h1>Welcome back, {session.name}</h1>
-            <p>Choose a skill, complete published practice, and keep your result history ready for your teacher.</p>
+            <p>{student?.groups?.name ? `You are assigned to ${student.groups.name}.` : "No group assigned yet. Contact your teacher to unlock lessons."}</p>
             <div className="hero-actions">
               <LinkButton href="/practice">Start practice</LinkButton>
               <LinkButton variant="secondary" href="/progress">View results</LinkButton>
@@ -41,7 +43,7 @@ export default async function DashboardPage() {
             </div>
           </div>
           <div className="hero-meter">
-            <span>Overall completion</span>
+            <span>{student?.groups?.name || "Group pending"}</span>
             <strong>{progress}%</strong>
             <ProgressBar value={progress} label="Overall progress" />
             <small>{completed}/{tasks.length || 0} tasks submitted</small>
@@ -65,11 +67,11 @@ export default async function DashboardPage() {
         <div className="content-grid">
           <section id="practice">
             <div className="section-head">
-              <h2>Published Tests</h2>
+              <h2>Assigned lessons</h2>
               <Link href="/progress">View progress</Link>
             </div>
             <div className="test-list">
-              {tasks.length ? tasks.map((task) => (
+              {!currentGroupId ? <EmptyState title="No group assigned yet" body="Your teacher needs to assign your Student Access ID to a group before lessons appear here." /> : tasks.length ? tasks.map((task) => (
                 <TestCard
                   key={task.id}
                   tone={toneFor(task.skill)}
@@ -79,7 +81,7 @@ export default async function DashboardPage() {
                   status={completedIds.has(task.id) ? <Badge tone="success">Submitted</Badge> : <Badge tone="warning">Open</Badge>}
                   action={<LinkButton href={`/tests/${task.id}`}>{completedIds.has(task.id) ? "Review" : "Start"}</LinkButton>}
                 />
-              )) : <EmptyState title="No published tests" body="Your teacher has not published practice work yet." />}
+              )) : <EmptyState title="No published tests" body="Your teacher has not published practice work for your group yet." />}
             </div>
           </section>
 
