@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { studentLogout } from "../actions/auth";
+import { StudentNav } from "./StudentNav";
 
 export function StudentShell({ name, children }: { name: string; children: React.ReactNode }) {
   return (
@@ -10,10 +11,7 @@ export function StudentShell({ name, children }: { name: string; children: React
             IELTS <span>Pro</span>
           </Link>
           <nav className="student-nav" aria-label="Student navigation">
-            <Link href="/dashboard">Dashboard</Link>
-            <Link href="/practice">Practice Tests</Link>
-            <Link href="/progress">Results</Link>
-            <Link href="/profile">Profile</Link>
+            <StudentNav />
             <form action={studentLogout}>
               <button className="btn btn-ghost" aria-label="Logout from student portal">Logout</button>
             </form>

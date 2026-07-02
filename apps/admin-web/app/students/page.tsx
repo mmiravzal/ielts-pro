@@ -1,13 +1,17 @@
-import { Badge, Button, Card, EmptyState, Input, Table } from "@ielts-pro/ui";
-import { createServerSupabaseClient, getAllStudents, getStudentDeviceSessions } from "@ielts-pro/shared";
+import { Badge, Button, Card, EmptyState, Input, StatCard, Table } from "@ielts-pro/ui";
+import { createServerSupabaseClient, getAllStudents, getStudentDeviceSessions, getWritingSubmissions } from "@ielts-pro/shared";
 import { requireAdminSession } from "@/lib/session";
 import { createStudentAccessAction, revokeAllDevicesAction, revokeDeviceSessionAction, toggleStudentAccessAction } from "../actions/lms";
 import { AdminShell } from "../components/AdminShell";
+import { CopyButton } from "../components/CopyButton";
 
 export default async function StudentsPage() {
   const admin = await requireAdminSession();
   const supabase = createServerSupabaseClient();
-  const students = await getAllStudents(supabase);
+  const [students, submissions] = await Promise.all([
+    getAllStudents(supabase),
+    getWritingSubmissions(supabase)
+  ]);
   let sessions: Awaited<ReturnType<typeof getStudentDeviceSessions>> = [];
   let accessSetupWarning = "";
   try {
@@ -21,16 +25,30 @@ export default async function StudentsPage() {
   sessions.forEach((session) => {
     sessionsByStudent.set(session.student_id, [...(sessionsByStudent.get(session.student_id) || []), session]);
   });
+  const submissionsByStudent = new Map<string, typeof submissions>();
+  submissions.forEach((submission) => {
+    submissionsByStudent.set(submission.student_id, [...(submissionsByStudent.get(submission.student_id) || []), submission]);
+  });
+  const openStudents = students.filter((student) => isOpen(student)).length;
+  const activeSessions = sessions.filter((session) => session.is_active !== false && !session.revoked_at).length;
+  const reviewedAttempts = submissions.filter((submission) => submission.score != null).length;
 
   return (
     <AdminShell email={admin.email}>
-      <div className="page-head">
+      <div className="page-head page-head-hero">
         <div>
           <p className="eyebrow">Private access</p>
-          <h1>Student Access</h1>
-          <p className="muted">Create teacher-issued access IDs, open or close access, and revoke individual device sessions.</p>
+          <h1>Students, access, and progress</h1>
+          <p className="muted">Issue login IDs, copy credentials quickly, check attempts, and manage device sessions from one student operations page.</p>
         </div>
       </div>
+
+      <section className="stats-grid student-ops-stats" aria-label="Student operations summary">
+        <StatCard label="Students" value={students.length} note={`${openStudents} open access IDs`} />
+        <StatCard label="Attempts" value={submissions.length} note={`${reviewedAttempts} reviewed`} />
+        <StatCard label="Active devices" value={activeSessions} note={deviceSessionsAvailable ? "tracked sessions" : "pending migration"} />
+        <StatCard label="No login yet" value={students.filter((student) => !student.last_login_at).length} note="needs onboarding" />
+      </section>
 
       <div className="student-access-grid">
         <Card className="panel access-create-card">
@@ -68,38 +86,58 @@ export default async function StudentsPage() {
       <Card className="panel">
         {students.length ? (
           <Table>
-            <thead><tr><th>Name</th><th>Access ID</th><th>Status</th><th>Devices</th><th>Actions</th></tr></thead>
+            <thead><tr><th>Student</th><th>Access ID</th><th>Status</th><th>Progress</th><th>Devices</th><th>Actions</th></tr></thead>
             <tbody>
-              {students.map((student) => (
-                <tr key={student.id}>
-                  <td>
-                    <strong>{student.name}</strong>
-                    <p className="table-note">{student.groups?.name || "No group"} · Last login {formatDate(student.last_login_at)}</p>
-                  </td>
-                  <td><code className="access-code">{student.student_code}</code></td>
-                  <td>{deviceSessionsAvailable ? (isOpen(student) ? <Badge tone="success">Open</Badge> : <Badge tone="warning">Closed</Badge>) : <Badge tone="warning">Legacy</Badge>}</td>
-                  <td>
-                    {deviceSessionsAvailable ? <DeviceSessionList sessions={sessionsByStudent.get(student.id) || []} /> : <span className="table-note">Device tracking pending. Student can still log in with this access ID.</span>}
-                  </td>
-                  <td>
-                    {deviceSessionsAvailable ? (
-                      <div className="table-actions">
-                        <form action={toggleStudentAccessAction}>
-                          <input type="hidden" name="student_id" value={student.id} />
-                          <input type="hidden" name="open" value={String(!isOpen(student))} />
-                          <Button variant={isOpen(student) ? "danger" : "secondary"}>{isOpen(student) ? "Close access" : "Open access"}</Button>
-                        </form>
-                        <form action={revokeAllDevicesAction}>
-                          <input type="hidden" name="student_id" value={student.id} />
-                          <Button variant="secondary">Revoke all devices</Button>
-                        </form>
+              {students.map((student) => {
+                const studentSubmissions = submissionsByStudent.get(student.id) || [];
+                const studentSessions = sessionsByStudent.get(student.id) || [];
+                return (
+                  <tr key={student.id}>
+                    <td>
+                      <div className="copy-row">
+                        <strong>{student.name}</strong>
+                        <CopyButton value={student.name} label="Copy name" />
                       </div>
-                    ) : (
-                      <span className="table-note">Run the migration to manage devices.</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
+                      <p className="table-note">{student.groups?.name || "No group"} · Last login {formatDate(student.last_login_at)}</p>
+                    </td>
+                    <td>
+                      <div className="copy-row">
+                        <code className="access-code">{student.student_code}</code>
+                        <CopyButton value={student.student_code} label="Copy ID" />
+                      </div>
+                      <CopyButton value={`${student.name}\n${student.student_code}`} label="Copy login" />
+                    </td>
+                    <td>{deviceSessionsAvailable ? (isOpen(student) ? <Badge tone="success">Open</Badge> : <Badge tone="warning">Closed</Badge>) : <Badge tone="warning">Legacy</Badge>}</td>
+                    <td>
+                      <div className="student-progress-mini">
+                        <strong>{studentSubmissions.length}</strong>
+                        <span>attempts</span>
+                        <small>{studentSubmissions.filter((submission) => submission.score != null).length} reviewed · {studentSubmissions.filter((submission) => submission.feedback).length} feedback</small>
+                      </div>
+                    </td>
+                    <td>
+                      {deviceSessionsAvailable ? <DeviceSessionList sessions={studentSessions} /> : <span className="table-note">Device tracking pending. Student can still log in with this access ID.</span>}
+                    </td>
+                    <td>
+                      {deviceSessionsAvailable ? (
+                        <div className="table-actions">
+                          <form action={toggleStudentAccessAction}>
+                            <input type="hidden" name="student_id" value={student.id} />
+                            <input type="hidden" name="open" value={String(!isOpen(student))} />
+                            <Button variant={isOpen(student) ? "danger" : "secondary"}>{isOpen(student) ? "Close access" : "Open access"}</Button>
+                          </form>
+                          <form action={revokeAllDevicesAction}>
+                            <input type="hidden" name="student_id" value={student.id} />
+                            <Button variant="secondary">Revoke devices</Button>
+                          </form>
+                        </div>
+                      ) : (
+                        <span className="table-note">Run the migration to manage devices.</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </Table>
         ) : <EmptyState title="No students" body="Add students in Supabase or extend this admin screen with create student forms next." />}

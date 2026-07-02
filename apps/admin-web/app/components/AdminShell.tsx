@@ -1,11 +1,24 @@
 import Link from "next/link";
 import { AppShell } from "@ielts-pro/ui";
 import { adminLogout } from "../actions/auth";
+import { AdminNav } from "./AdminNav";
 
 export function AdminShell({ email, children }: { email: string; children: React.ReactNode }) {
   return (
     <AppShell sidebar={<Sidebar email={email} />}>
-      {children}
+      <div className="admin-topbar">
+        <div>
+          <span className="admin-status-dot" aria-hidden="true" />
+          <span>Teacher workspace</span>
+        </div>
+        <div className="admin-topbar-actions">
+          <Link href="/students">Student access</Link>
+          <Link href="/full-tests/new">New test</Link>
+        </div>
+      </div>
+      <div className="admin-content">
+        {children}
+      </div>
     </AppShell>
   );
 }
@@ -15,16 +28,9 @@ function Sidebar({ email }: { email: string }) {
     <>
       <div>
         <div className="sidebar-brand">IELTS <span>Pro</span></div>
-        <p className="sidebar-kicker">Teacher operations</p>
+        <p className="sidebar-kicker">Teacher command center</p>
       </div>
-      <nav aria-label="Admin navigation">
-        <Link href="/dashboard">Dashboard</Link>
-        <Link href="/students">Students</Link>
-        <Link href="/lessons">Content Studio</Link>
-        <Link href="/full-tests">Full Tests</Link>
-        <Link href="/full-tests/new">Test Builder</Link>
-        <Link href="/submissions">Writing Review</Link>
-      </nav>
+      <AdminNav />
       <div className="sidebar-user">
         <p>{email}</p>
         <form action={adminLogout}><button className="btn btn-ghost" aria-label="Logout from admin panel">Logout</button></form>
