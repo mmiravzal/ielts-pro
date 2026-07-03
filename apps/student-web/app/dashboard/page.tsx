@@ -79,7 +79,7 @@ export default async function DashboardPage() {
                   title={task.title}
                   description={lessons.find((lesson) => lesson.id === task.lesson_id)?.title || "IELTS practice"}
                   status={completedIds.has(task.id) ? <Badge tone="success">Submitted</Badge> : <Badge tone="warning">Open</Badge>}
-                  action={<LinkButton href={`/tests/${task.id}`}>{completedIds.has(task.id) ? "Review" : "Start"}</LinkButton>}
+                  action={<LinkButton href={`/tests/${task.id}`} target="_blank" rel="noopener noreferrer">{completedIds.has(task.id) ? "Review" : "Start"}</LinkButton>}
                 />
               )) : <EmptyState title="No published tests" body="Your teacher has not published practice work for your group yet." />}
             </div>

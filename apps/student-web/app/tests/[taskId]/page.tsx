@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Badge, Button, Card, EmptyState, Input, QuestionNavigator } from "@ielts-pro/ui";
-import { createServerSupabaseClient, getPublishedTaskByIdForStudent, getStudentById, getSubmissionForTask, parseTaskContent, sanitizeTeacherHtml, type Question, type TaskContent } from "@ielts-pro/shared";
+import { buildRenderableQuestions, createServerSupabaseClient, getPublishedTaskByIdForStudent, getStudentById, getSubmissionForTask, getTaskAudioUrl, parseTaskContent, sanitizeTeacherHtml, type Question, type Task, type TaskContent } from "@ielts-pro/shared";
 import { requireStudentSession } from "@/lib/session";
 import { submitTaskAttempt } from "../../actions/attempts";
 import { StudentShell } from "../../components/StudentShell";
@@ -19,7 +19,8 @@ export default async function TestPage({ params }: { params: Promise<{ taskId: s
   ]);
   if (!task) notFound();
   const content = parseTaskContent<TaskContent>(task.content, { questions: [] });
-  const questions = flattenQuestions(content);
+  const questions = buildRenderableQuestions(content, task);
+  const audioUrl = getTaskAudioUrl(content, task);
   const questionCount = questions.length;
   const isFullTest = task.skill === "full_test";
   const timeLabel = content.time_limit_minutes || content.duration_minutes ? `${content.time_limit_minutes || content.duration_minutes} min` : "Study mode";
@@ -55,7 +56,7 @@ export default async function TestPage({ params }: { params: Promise<{ taskId: s
             </div>
             <section className="card passage">
               {isFullTest ? (
-                <FullTestBrief content={content} />
+                <FullTestBrief content={content} task={task} />
               ) : task.skill === "writing" ? (
                 <>
                   <p className="eyebrow">Writing prompt</p>
@@ -68,7 +69,11 @@ export default async function TestPage({ params }: { params: Promise<{ taskId: s
                   <p className="eyebrow">Listening audio</p>
                   <h2>Listen and answer</h2>
                   <p>{content.instructions || "Listen and answer the questions."}</p>
-                  {content.audio_url ? <audio controls src={content.audio_url} className="audio-player" /> : <p className="form-error">No audio file is attached.</p>}
+                  {audioUrl ? (
+                    <audio controls src={audioUrl} className="audio-player" />
+                  ) : (
+                    <p className="form-error">No listening audio was found in this import. Ask the teacher to attach an audio URL before publishing it as Listening.</p>
+                  )}
                 </>
               ) : (
                 <>
@@ -90,7 +95,12 @@ export default async function TestPage({ params }: { params: Promise<{ taskId: s
                 <WritingAnswerBox name="writing_answer" label="Your response" placeholder="Write your IELTS response here..." minWords={content.min_words} required />
               ) : (
                 <>
-                  {questions.length ? questions.map((question, index) => <QuestionInput question={question} index={index} key={index} />) : <EmptyState title="No objective questions" body="This task may only contain writing prompts." />}
+                  {questions.length ? questions.map((question, index) => <QuestionInput question={question} index={index} key={index} />) : (
+                    <EmptyState
+                      title="Teacher answer sheet needs review"
+                      body="The imported HTML is saved, but the parser could not build student answer fields. Ask the teacher to review the Test Builder preview before publishing."
+                    />
+                  )}
                   {isFullTest && writingPrompt(content) ? (
                     <WritingAnswerBox name="full_writing_answer" label="Writing response" placeholder="Write your Task 1 and Task 2 responses here..." minWords={content.min_words} />
                   ) : null}
@@ -110,11 +120,12 @@ export default async function TestPage({ params }: { params: Promise<{ taskId: s
   );
 }
 
-function FullTestBrief({ content }: { content: TaskContent }) {
+function FullTestBrief({ content, task }: { content: TaskContent; task: Task }) {
   const sections = content.sections || [];
   const reading = sections.find((section) => section.skill === "reading");
   const listening = sections.find((section) => section.skill === "listening");
   const writing = sections.find((section) => section.skill === "writing");
+  const audioUrl = getTaskAudioUrl(content, task);
 
   return (
     <>
@@ -130,7 +141,7 @@ function FullTestBrief({ content }: { content: TaskContent }) {
         <section>
           <Badge tone="listening">Listening</Badge>
           <h3>{listening?.title || "Listening section"}</h3>
-          {listening?.audio_url || content.audio_url ? <audio controls src={listening?.audio_url || content.audio_url} className="audio-player" /> : <p className="form-error">No listening audio is attached.</p>}
+          {audioUrl ? <audio controls src={audioUrl} className="audio-player" /> : <p className="form-error">No listening audio was found in this import.</p>}
         </section>
         <section>
           <Badge tone="writing">Writing</Badge>
@@ -144,13 +155,6 @@ function FullTestBrief({ content }: { content: TaskContent }) {
 
 function writingPrompt(content: TaskContent) {
   return content.prompt || content.sections?.some((section) => section.skill === "writing" && section.prompt);
-}
-
-function flattenQuestions(content: TaskContent): Question[] {
-  return [
-    ...(content.questions || []),
-    ...((content.sections || []).flatMap((section) => section.questions || []))
-  ];
 }
 
 function QuestionInput({ question, index }: { question: Question; index: number }) {

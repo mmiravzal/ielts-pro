@@ -57,9 +57,17 @@ export async function getPublishedTasks(supabase: SupabaseClient) {
     .from("tasks")
     .select("*")
     .in("lesson_id", lessonIds)
+    .is("archived_at", null)
     .order("order", { ascending: true });
-  if (error) throw error;
-  return { lessons, tasks: (data || []) as Task[] };
+  if (!error) return { lessons, tasks: ((data || []) as Task[]).filter(isStudentVisibleTask) };
+  if (!isMissingContentMetadataColumnError(error)) throw error;
+  const fallback = await supabase
+    .from("tasks")
+    .select("*")
+    .in("lesson_id", lessonIds)
+    .order("order", { ascending: true });
+  if (fallback.error) throw fallback.error;
+  return { lessons, tasks: ((fallback.data || []) as Task[]).filter(isStudentVisibleTask) };
 }
 
 export async function getPublishedTasksForStudent(supabase: SupabaseClient, groupId?: string | null) {
@@ -82,7 +90,7 @@ export async function getPublishedTasksForStudent(supabase: SupabaseClient, grou
       .is("archived_at", null)
       .order("order", { ascending: true });
     if (tasksError) throw tasksError;
-    return { lessons, tasks: (tasksData || []) as Task[] };
+    return { lessons, tasks: ((tasksData || []) as Task[]).filter(isStudentVisibleTask) };
   } catch (error) {
     if (!isMissingGroupLessonColumnError(error) && !isMissingContentMetadataColumnError(error)) throw error;
     return getPublishedTasks(supabase);
@@ -302,7 +310,7 @@ export async function getPublishedTaskById(supabase: SupabaseClient, taskId: str
     .maybeSingle();
   if (error) throw error;
   const typed = task as Task | null;
-  if (!typed || typed.lessons?.published !== true) return null;
+  if (!typed || typed.lessons?.published !== true || !isStudentVisibleTask(typed)) return null;
   return typed;
 }
 
@@ -316,7 +324,7 @@ export async function getPublishedTaskByIdForStudent(supabase: SupabaseClient, t
       .maybeSingle();
     if (error) throw error;
     const typed = task as Task | null;
-    if (!typed || typed.lessons?.published !== true) return null;
+    if (!typed || typed.lessons?.published !== true || !isStudentVisibleTask(typed)) return null;
     const lessonGroupId = typed.lessons?.group_id;
     if (lessonGroupId && lessonGroupId !== groupId) return null;
     return typed;
@@ -324,6 +332,13 @@ export async function getPublishedTaskByIdForStudent(supabase: SupabaseClient, t
     if (!isMissingGroupLessonColumnError(error)) throw error;
     return getPublishedTaskById(supabase, taskId);
   }
+}
+
+function isStudentVisibleTask(task: Task) {
+  if (task.archived_at) return false;
+  const status = String(task.content_status || "").toLowerCase();
+  if (!status) return true;
+  return status === "published";
 }
 
 export async function getSubmissionForTask(supabase: SupabaseClient, studentId: string, taskId: string) {

@@ -1,7 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { createServerSupabaseClient, getPublishedTaskByIdForStudent, getStudentById, gradeQuestions, parseTaskContent, submitAttempt, type Question, type TaskContent } from "@ielts-pro/shared";
+import { buildRenderableQuestions, createServerSupabaseClient, getPublishedTaskByIdForStudent, getStudentById, gradeQuestions, parseTaskContent, submitAttempt, type TaskContent } from "@ielts-pro/shared";
 import { requireStudentSession } from "@/lib/session";
 
 export async function submitTaskAttempt(formData: FormData) {
@@ -13,7 +13,7 @@ export async function submitTaskAttempt(formData: FormData) {
   if (!task) redirect("/dashboard?error=unavailable");
 
   const content = parseTaskContent<TaskContent>(task.content, { questions: [] });
-  const questions = flattenQuestions(content);
+  const questions = buildRenderableQuestions(content, task);
 
   if (task.skill === "writing") {
     const answer = String(formData.get("writing_answer") || "").trim();
@@ -52,11 +52,4 @@ export async function submitTaskAttempt(formData: FormData) {
     total
   });
   redirect("/progress?submitted=test");
-}
-
-function flattenQuestions(content: TaskContent): Question[] {
-  return [
-    ...(content.questions || []),
-    ...((content.sections || []).flatMap((section) => section.questions || []))
-  ];
 }

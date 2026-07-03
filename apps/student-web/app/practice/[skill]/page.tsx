@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Badge, EmptyState, LinkButton, ProgressBar, TestCard } from "@ielts-pro/ui";
-import { createServerSupabaseClient, getPublishedTasksForStudent, getStudentById, getStudentSubmissions, parseTaskContent, type TaskContent } from "@ielts-pro/shared";
+import { createServerSupabaseClient, getPublishedTasksForStudent, getStudentById, getStudentSubmissions, inferQuestionCount, parseTaskContent, type TaskContent } from "@ielts-pro/shared";
 import { requireStudentSession } from "@/lib/session";
 import { StudentShell } from "../../components/StudentShell";
 
@@ -89,7 +89,7 @@ export default async function SkillPracticePage({ params }: { params: Promise<{ 
           <div className="test-list">
             {skillTasks.map((task) => {
               const content = parseTaskContent<TaskContent>(task.content, { questions: [] });
-              const questionCount = countQuestions(content);
+              const questionCount = inferQuestionCount(content, task);
               const duration = content.time_limit_minutes || content.duration_minutes;
               return (
                 <TestCard
@@ -99,7 +99,7 @@ export default async function SkillPracticePage({ params }: { params: Promise<{ 
                   title={task.title}
                   description={`${lessons.find((lesson) => lesson.id === task.lesson_id)?.title || "IELTS practice"}${questionCount ? ` • ${questionCount} questions` : ""}${duration ? ` • ${duration} min` : ""}`}
                   status={completedIds.has(task.id) ? <Badge tone="success">Submitted</Badge> : <Badge tone="warning">Open</Badge>}
-                  action={<LinkButton href={`/tests/${task.id}`}>{completedIds.has(task.id) ? "Open result" : "Start test"}</LinkButton>}
+                  action={<LinkButton href={`/tests/${task.id}`} target="_blank" rel="noopener noreferrer">{completedIds.has(task.id) ? "Open result" : "Start test"}</LinkButton>}
                 />
               );
             })}
@@ -119,10 +119,4 @@ export default async function SkillPracticePage({ params }: { params: Promise<{ 
 
 function isSkillSlug(value: string): value is SkillSlug {
   return value in skills;
-}
-
-function countQuestions(content: TaskContent) {
-  const direct = content.questions?.length || 0;
-  const sectionQuestions = content.sections?.reduce((total, section) => total + (section.questions?.length || 0), 0) || 0;
-  return direct + sectionQuestions;
 }

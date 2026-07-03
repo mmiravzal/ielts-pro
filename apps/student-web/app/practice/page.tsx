@@ -59,7 +59,7 @@ export default async function PracticePage() {
             <h1>Choose your IELTS skill and continue your plan.</h1>
             <p className="muted">{student?.groups?.name ? `Showing lessons assigned to ${student.groups.name}.` : "No group assigned yet. Ask your teacher to place you into a study group."}</p>
             <div className="hero-actions">
-              {nextTask ? <LinkButton href={`/tests/${nextTask.id}`}>Continue next task</LinkButton> : null}
+              {nextTask ? <LinkButton href={`/tests/${nextTask.id}`} target="_blank" rel="noopener noreferrer">Continue next task</LinkButton> : null}
               <LinkButton href="/progress" variant="secondary">Result history</LinkButton>
             </div>
           </div>
@@ -107,7 +107,7 @@ export default async function PracticePage() {
                 title={task.title}
                 description={lessons.find((lesson) => lesson.id === task.lesson_id)?.title || "IELTS practice"}
                 status={completedIds.has(task.id) ? <Badge tone="success">Submitted</Badge> : <Badge tone="warning">Open</Badge>}
-                action={<LinkButton href={`/tests/${task.id}`}>{completedIds.has(task.id) ? "Review" : "Start"}</LinkButton>}
+                action={<LinkButton href={`/tests/${task.id}`} target="_blank" rel="noopener noreferrer">{completedIds.has(task.id) ? "Review" : "Start"}</LinkButton>}
               />
             ))}
             {currentGroupId && !tasks.length ? <EmptyState title="No practice yet" body="Your teacher has not published IELTS practice work for your group yet." /> : null}

@@ -1,12 +1,32 @@
 import Link from "next/link";
-import { Badge, Card, EmptyState, StatCard, Table } from "@ielts-pro/ui";
+import { Badge, Card, EmptyState, ErrorState, StatCard, Table } from "@ielts-pro/ui";
 import { createServerSupabaseClient, getAdminDashboardStats } from "@ielts-pro/shared";
 import { requireAdminSession } from "@/lib/session";
 import { AdminShell } from "../components/AdminShell";
 
 export default async function AdminDashboardPage() {
   const admin = await requireAdminSession();
-  const stats = await getAdminDashboardStats(createServerSupabaseClient());
+  const stats = await getDashboardStatsSafely();
+  if (!stats) {
+    return (
+      <AdminShell email={admin.email}>
+        <div className="page-head page-head-hero dashboard-hero">
+          <div>
+            <p className="eyebrow">Dashboard</p>
+            <h1>Supabase setup needs attention.</h1>
+            <p className="muted">The admin app loaded, but one dashboard query failed. Apply the latest Supabase migration, then refresh this page.</p>
+          </div>
+          <div className="page-actions">
+            <Link className="btn btn-primary" href="/settings">Open settings</Link>
+            <Link className="btn btn-secondary" href="/students">Check students</Link>
+          </div>
+        </div>
+        <Card className="panel">
+          <ErrorState title="Dashboard data is not available yet" body="This usually means the database schema is behind the app code. The rest of the admin routes stay reachable so you can continue setup." />
+        </Card>
+      </AdminShell>
+    );
+  }
   const published = stats.lessons.filter((lesson) => lesson.published).length;
   const draftLessons = stats.lessons.filter((lesson) => !lesson.published).length;
   const activeStudents = stats.students.filter((student) => student.is_active !== false && student.access_status !== "closed").length;
@@ -124,4 +144,13 @@ export default async function AdminDashboardPage() {
       </div>
     </AdminShell>
   );
+}
+
+async function getDashboardStatsSafely() {
+  try {
+    return await getAdminDashboardStats(createServerSupabaseClient());
+  } catch (error) {
+    console.error("Admin dashboard stats failed", error);
+    return null;
+  }
 }

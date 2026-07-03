@@ -1,4 +1,5 @@
-import { Badge, Button, Card, EmptyState, Input, StatCard, Textarea } from "@ielts-pro/ui";
+import Link from "next/link";
+import { Badge, Button, Card, EmptyState, ErrorState, Input, StatCard, Textarea } from "@ielts-pro/ui";
 import { createServerSupabaseClient, getWritingSubmissions } from "@ielts-pro/shared";
 import { requireAdminSession } from "@/lib/session";
 import { AdminShell } from "../components/AdminShell";
@@ -6,7 +7,23 @@ import { reviewSubmissionAction } from "../actions/lms";
 
 export default async function SubmissionsPage() {
   const admin = await requireAdminSession();
-  const submissions = await getWritingSubmissions(createServerSupabaseClient());
+  const submissions = await getSubmissionsSafely();
+  if (!submissions) {
+    return (
+      <AdminShell email={admin.email}>
+        <div className="page-head page-head-hero">
+          <div>
+            <p className="eyebrow">Review queue</p>
+            <h1>Writing review desk</h1>
+            <p className="muted">The admin route loaded, but Supabase did not return the submissions query.</p>
+          </div>
+        </div>
+        <Card className="panel">
+          <ErrorState title="Submissions are unavailable" body="Apply the latest Supabase migration, then refresh this page. This screen is intentionally not crashing to a blank Vercel error." />
+        </Card>
+      </AdminShell>
+    );
+  }
   const writing = submissions.filter((submission) => submission.tasks?.skill === "writing");
   const pending = writing.filter((submission) => submission.score == null);
   const reviewed = writing.filter((submission) => submission.score != null);
@@ -17,6 +34,9 @@ export default async function SubmissionsPage() {
           <p className="eyebrow">Review queue</p>
           <h1>Writing review desk</h1>
           <p className="muted">Read student responses, assign a band, and leave clear next-step feedback without losing the queue context.</p>
+        </div>
+        <div className="page-actions">
+          <Link className="btn btn-secondary" href="/submissions/export">Export CSV</Link>
         </div>
       </div>
 
@@ -59,4 +79,13 @@ export default async function SubmissionsPage() {
       </div>
     </AdminShell>
   );
+}
+
+async function getSubmissionsSafely() {
+  try {
+    return await getWritingSubmissions(createServerSupabaseClient());
+  } catch (error) {
+    console.error("Writing submissions failed", error);
+    return null;
+  }
 }
