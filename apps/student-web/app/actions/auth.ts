@@ -65,7 +65,7 @@ export async function studentLogin(_: { error?: string } | undefined, formData: 
 
 export async function studentLogout() {
   await clearStudentSession();
-  redirect("/");
+  redirect("/login");
 }
 
 function isMissingDeviceSessionsError(error: unknown) {

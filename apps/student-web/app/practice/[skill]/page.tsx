@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Badge, EmptyState, LinkButton, ProgressBar, TestCard } from "@ielts-pro/ui";
-import { createServerSupabaseClient, getPublishedTasks, getStudentSubmissions, parseTaskContent, type TaskContent } from "@ielts-pro/shared";
+import { createServerSupabaseClient, getPublishedTasksForStudent, getStudentById, getStudentSubmissions, parseTaskContent, type TaskContent } from "@ielts-pro/shared";
 import { requireStudentSession } from "@/lib/session";
 import { StudentShell } from "../../components/StudentShell";
 
@@ -45,10 +45,11 @@ export default async function SkillPracticePage({ params }: { params: Promise<{ 
   const config = skills[skill];
   const session = await requireStudentSession();
   const supabase = createServerSupabaseClient();
-  const [{ lessons, tasks }, submissions] = await Promise.all([
-    getPublishedTasks(supabase),
+  const [student, submissions] = await Promise.all([
+    getStudentById(supabase, session.id),
     getStudentSubmissions(supabase, session.id)
   ]);
+  const { lessons, tasks } = await getPublishedTasksForStudent(supabase, student?.group_id || session.group_id || null);
   const completedIds = new Set(submissions.map((submission) => submission.task_id));
   const skillTasks = tasks.filter((task) => task.skill === config.db);
   const completed = skillTasks.filter((task) => completedIds.has(task.id)).length;

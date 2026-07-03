@@ -101,11 +101,15 @@ export default async function LessonsPage() {
                       <td>
                         <div className="status-control-stack">
                           {published ? <Badge tone="success">Visible</Badge> : <Badge tone="warning">Hidden</Badge>}
-                          <form action={toggleLessonPublishAction}>
-                            <input type="hidden" name="id" value={task.lesson_id} />
-                            <input type="hidden" name="published" value={String(published)} />
-                            <Button variant={published ? "secondary" : "primary"}>{published ? "Hide" : "Make visible"}</Button>
-                          </form>
+                          {task.lesson_id ? (
+                            <form action={toggleLessonPublishAction}>
+                              <input type="hidden" name="id" value={task.lesson_id} />
+                              <input type="hidden" name="published" value={String(published)} />
+                              <Button variant={published ? "secondary" : "primary"}>{published ? "Hide" : "Make visible"}</Button>
+                            </form>
+                          ) : (
+                            <span className="table-note">Attach to a lesson first</span>
+                          )}
                         </div>
                       </td>
                       <td>
@@ -115,7 +119,8 @@ export default async function LessonsPage() {
                       <td>
                         <form action={attachContentToLessonAction} className="inline-form">
                           <input type="hidden" name="task_id" value={task.id} />
-                          <Select name="lesson_id" defaultValue={task.lesson_id}>
+                          <Select name="lesson_id" defaultValue={task.lesson_id || ""}>
+                            <option value="">Choose lesson</option>
                             {lessons.map((lesson) => <option value={lesson.id} key={lesson.id}>{lesson.title}</option>)}
                           </Select>
                           <Button variant="secondary">Attach</Button>
@@ -238,15 +243,21 @@ export default async function LessonsPage() {
                       <td>
                         <div className="status-control-stack">
                           {published ? <Badge tone="success">Visible</Badge> : <Badge tone="warning">Hidden</Badge>}
-                          <form action={toggleLessonPublishAction}>
-                            <input type="hidden" name="id" value={task.lesson_id} />
-                            <input type="hidden" name="published" value={String(published)} />
-                            <Button variant={published ? "secondary" : "primary"}>{published ? "Unpublish" : "Publish"}</Button>
-                          </form>
+                          {task.lesson_id ? (
+                            <form action={toggleLessonPublishAction}>
+                              <input type="hidden" name="id" value={task.lesson_id} />
+                              <input type="hidden" name="published" value={String(published)} />
+                              <Button variant={published ? "secondary" : "primary"}>{published ? "Unpublish" : "Publish"}</Button>
+                            </form>
+                          ) : (
+                            <span className="table-note">Attach to a lesson first</span>
+                          )}
                         </div>
                       </td>
                       <td>
-                        {published && studentAppUrl ? (
+                        {!task.lesson_id ? (
+                          <span className="muted">Attach to lesson first</span>
+                        ) : published && studentAppUrl ? (
                           <a href={`${studentAppUrl}/tests/${task.id}`} target="_blank" rel="noreferrer">Preview as student</a>
                         ) : published ? (
                           <span className="muted">Set NEXT_PUBLIC_STUDENT_APP_URL</span>
@@ -293,7 +304,11 @@ function metric(...values: Array<number | null | undefined>) {
 }
 
 function countQuestions(content: TaskContent) {
-  return (content.questions?.length || 0) + (content.sections || []).reduce((sum, section) => sum + (section.questions?.length || 0), 0);
+  return countQuestionUnits(content.questions) + (content.sections || []).reduce((sum, section) => sum + countQuestionUnits(section.questions), 0);
+}
+
+function countQuestionUnits(questions: TaskContent["questions"]) {
+  return (questions || []).reduce((sum, question) => sum + (question.items?.length || 1), 0);
 }
 
 function previewText(task: Task, content: TaskContent) {

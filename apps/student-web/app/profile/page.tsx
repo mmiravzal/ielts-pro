@@ -7,10 +7,15 @@ import { StudentShell } from "../components/StudentShell";
 export default async function ProfilePage() {
   const session = await requireStudentSession();
   const supabase = createServerSupabaseClient();
-  const [submissions, deviceSessions] = await Promise.all([
-    getStudentSubmissions(supabase, session.id),
-    getStudentDeviceSessions(supabase, session.id)
-  ]);
+  const submissions = await getStudentSubmissions(supabase, session.id);
+  let deviceSessions: Awaited<ReturnType<typeof getStudentDeviceSessions>> = [];
+  let deviceTrackingNote = "";
+  try {
+    deviceSessions = await getStudentDeviceSessions(supabase, session.id);
+  } catch (error) {
+    console.error("Student profile device sessions unavailable", error);
+    deviceTrackingNote = "Device tracking is being configured. Your practice and results still work.";
+  }
   const reviewed = submissions.filter((submission) => submission.score != null);
   const feedback = submissions.filter((submission) => submission.feedback);
   const activeDevices = deviceSessions.filter((device) => device.is_active !== false && !device.revoked_at);
@@ -62,6 +67,7 @@ export default async function ProfilePage() {
 
           <aside className="right-rail">
             <div className="section-head"><h2>Device sessions</h2></div>
+            {deviceTrackingNote ? <p className="setup-note">{deviceTrackingNote}</p> : null}
             <div className="device-stack">
               {deviceSessions.slice(0, 5).map((device) => (
                 <Card className="profile-device" key={device.id}>

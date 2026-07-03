@@ -19,7 +19,7 @@ export default async function DashboardPage() {
   const progress = tasks.length ? Math.round((completed / tasks.length) * 100) : 0;
   const writingPending = submissions.filter((submission) => submission.tasks?.skill === "writing" && submission.score == null).length;
 
-  if (!session) redirect("/");
+  if (!session) redirect("/login");
   const readingCount = tasks.filter((task) => task.skill === "reading").length;
   const listeningCount = tasks.filter((task) => task.skill === "listening").length;
   const writingCount = tasks.filter((task) => task.skill === "writing").length;

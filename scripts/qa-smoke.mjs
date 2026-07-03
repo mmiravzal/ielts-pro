@@ -80,8 +80,14 @@ try {
     waitFor("http://localhost:3001", "admin app"),
   ]);
 
-  await check("student login renders", async () => {
+  await check("student public homepage renders", async () => {
     const { text } = await get("http://localhost:3000");
+    expectIncludes(text, "IELTS Pro", "student public homepage");
+    expectIncludes(text, "Choose a skill", "student public homepage");
+  });
+
+  await check("student login renders", async () => {
+    const { text } = await get("http://localhost:3000/login");
     expectIncludes(text, "Student access", "student login");
     expectIncludes(text, "Enter Student Portal", "student login");
   });

@@ -1,67 +1,78 @@
-"use client";
+import Link from "next/link";
+import { siteContent } from "@ielts-pro/shared";
+import { PublicShell } from "./components/PublicShell";
 
-import { Suspense } from "react";
-import { useActionState } from "react";
-import { useSearchParams } from "next/navigation";
-import { Button, Card, Input } from "@ielts-pro/ui";
-import { studentLogin } from "./actions/auth";
-
-export default function StudentLoginPage() {
+export default function HomePage() {
   return (
-    <Suspense fallback={<main className="login-screen" />}>
-      <StudentLoginForm />
-    </Suspense>
-  );
-}
-
-function StudentLoginForm() {
-  const [state, action, pending] = useActionState(studentLogin, undefined);
-  const searchParams = useSearchParams();
-  const sessionError = searchParams.get("error");
-  return (
-    <main className="login-screen">
-      <section className="login-hero">
-        <p className="eyebrow">Private IELTS Pro portal</p>
-        <h1>Enter your teacher-issued IELTS workspace.</h1>
-        <p>
-          This is a closed learning portal. Access is created by your teacher, then protected with a private Student Access ID and device session checks.
-        </p>
-        <div className="login-skill-strip" aria-label="IELTS skills">
-          <span>Reading</span>
-          <span>Listening</span>
-          <span>Writing</span>
-          <span>Full tests</span>
-        </div>
-        <div className="study-map" aria-hidden="true">
-          <div className="study-map-head">
-            <span>Band path</span>
-            <strong>7.0+</strong>
+    <PublicShell>
+      <main className="public-main">
+        <section className="home-hero">
+          <div className="home-hero-copy">
+            <p className="public-kicker">Teacher-guided IELTS practice</p>
+            <h1>Structured IELTS lessons, tests, and progress for Miravzal students.</h1>
+            <p>
+              A clean practice workspace for reading, listening, writing, full tests, and reviewed student results.
+              Students enter through a private access ID issued by the teacher.
+            </p>
+            <div className="home-hero-actions">
+              <Link className="public-primary" href="/practice-tests">Choose a skill</Link>
+              <Link className="public-secondary" href="/login">Student login</Link>
+            </div>
           </div>
-          <div className="study-row"><span>R</span><i /><b>Passage drills</b></div>
-          <div className="study-row"><span>L</span><i /><b>Audio sections</b></div>
-          <div className="study-row"><span>W</span><i /><b>Teacher feedback</b></div>
-        </div>
-      </section>
-      <Card className="login-card">
-        <p className="eyebrow">Teacher-issued access</p>
-        <h2>Student access</h2>
-        <p className="muted">Use your full name and Student Access ID. There is no public signup or free trial.</p>
-        <form action={action} className="form-stack">
-          <label>
-            Full Name
-            <Input name="name" autoComplete="name" placeholder="Miravzal S" required />
-          </label>
-          <label>
-            Student Access ID
-            <Input name="code" inputMode="numeric" autoComplete="one-time-code" placeholder="1111111" required />
-          </label>
-          {sessionError === "session-revoked" ? <p className="form-error">This device session was revoked or your access was closed. Contact your teacher.</p> : null}
-          {sessionError === "session-expired" ? <p className="form-error">Your session expired. Enter your Student Access ID again.</p> : null}
-          {sessionError === "access-setup" ? <p className="form-error">Student access setup is not finished yet. Ask the admin to apply the Supabase migration.</p> : null}
-          {state?.error ? <p className="form-error">{state.error}</p> : null}
-          <Button disabled={pending}>{pending ? "Checking..." : "Enter Student Portal"}</Button>
-        </form>
-      </Card>
-    </main>
+          <div className="home-hero-board" aria-label="IELTS practice overview">
+            <div className="board-top">
+              <span>IELTS Pro workspace</span>
+              <strong>Live</strong>
+            </div>
+            <div className="board-split">
+              <div>
+                <small>Reading passage</small>
+                <i />
+                <i />
+                <i />
+              </div>
+              <div>
+                <small>Questions 1-7</small>
+                <b>1</b>
+                <b>2</b>
+                <b>3</b>
+              </div>
+            </div>
+            <div className="board-footer">
+              <span>59:54</span>
+              <span>Review answers</span>
+            </div>
+          </div>
+        </section>
+
+        <section className="public-card-grid" aria-label="IELTS platform areas">
+          {siteContent.homeCards.map((card) => (
+            <article className={`public-feature-card card-${card.tone}`} key={card.title}>
+              <span>{card.label}</span>
+              <h2>{card.title}</h2>
+              <p>{card.description}</p>
+              <Link href={card.href}>{card.action} <small aria-hidden="true">-&gt;</small></Link>
+            </article>
+          ))}
+        </section>
+
+        <section className="public-news">
+          <div className="section-title-row">
+            <h2>What is ready</h2>
+            <Link href="/student-results">View student results</Link>
+          </div>
+          <div className="news-panel">
+            {siteContent.updates.map((item) => (
+              <Link href={item.href} key={item.title} className="news-row">
+                <span>{item.label}</span>
+                <strong>{item.title}</strong>
+                <p>{item.description}</p>
+                <small>{item.action} -&gt;</small>
+              </Link>
+            ))}
+          </div>
+        </section>
+      </main>
+    </PublicShell>
   );
 }

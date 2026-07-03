@@ -86,6 +86,8 @@ export async function toggleStudentAccessAction(formData: FormData) {
   await setStudentAccessStatus(supabase, studentId, open);
   if (!open) await revokeAllStudentDeviceSessions(supabase, studentId, admin.email);
   revalidatePath("/students");
+  revalidatePath("/student-control");
+  revalidatePath("/dashboard");
 }
 
 export async function revokeDeviceSessionAction(formData: FormData) {
@@ -94,6 +96,8 @@ export async function revokeDeviceSessionAction(formData: FormData) {
   if (!sessionId) return;
   await revokeStudentDeviceSession(createServerSupabaseClient(), sessionId, admin.email);
   revalidatePath("/students");
+  revalidatePath("/student-control");
+  revalidatePath("/dashboard");
 }
 
 export async function revokeAllDevicesAction(formData: FormData) {
@@ -102,6 +106,8 @@ export async function revokeAllDevicesAction(formData: FormData) {
   if (!studentId) return;
   await revokeAllStudentDeviceSessions(createServerSupabaseClient(), studentId, admin.email);
   revalidatePath("/students");
+  revalidatePath("/student-control");
+  revalidatePath("/dashboard");
 }
 
 export async function importHtmlContentAction(formData: FormData) {
@@ -270,9 +276,10 @@ function parseHtmlImport(rawHtml: string, input: HtmlImportInput): {
   const audioUrl = input.manualAudioUrl || extractAudioUrl(sanitized);
   const title = extractHtmlTitle(sanitized) || titleFromFile(input.fileName);
   const questions = inferQuestions(sanitized, textContent, input.questionType);
+  const questionCount = countImportedQuestionUnits(questions);
   const answerCount = countAnswerKeys(sanitized, textContent);
   const warnings: string[] = [];
-  if (!questions.length && skill !== "writing") warnings.push("No objective question inputs were detected. Use Content Studio preview before publishing.");
+  if (!questionCount && skill !== "writing") warnings.push("No objective question inputs were detected. Use Content Studio preview before publishing.");
   if (skill === "listening" && !audioUrl) warnings.push("No audio URL was detected. Add audio metadata before assigning this listening test.");
   if (skill === "writing" && textContent.length < 40) warnings.push("Writing prompt is very short. Check the preview before publishing.");
   const subtype = input.subtype || defaultSubtype(skill, input.structure);
@@ -288,7 +295,7 @@ function parseHtmlImport(rawHtml: string, input: HtmlImportInput): {
     audio_url: audioUrl || undefined,
     prompt: skill === "writing" ? textContent : undefined,
     questions,
-    question_count: questions.length,
+    question_count: questionCount,
     answer_count: answerCount,
     warnings,
     preview_text: textContent.slice(0, 1200)
@@ -303,7 +310,7 @@ function parseHtmlImport(rawHtml: string, input: HtmlImportInput): {
     contentType: skill,
     subtype,
     audioUrl: audioUrl || null,
-    questionCount: questions.length,
+    questionCount,
     answerCount,
     warnings,
     content
@@ -364,15 +371,20 @@ function extractAudioUrl(html: string) {
 
 function inferQuestions(html: string, textValue: string, questionType: string): NonNullable<TaskContent["questions"]> {
   const inputCount = (html.match(/<(?:input|select|textarea)\b/gi) || []).length;
-  const numberedLines = textValue.split(/\n+/).filter((line) => /^\s*(?:\d{1,2}[\).]|Question\s+\d+)/i.test(line));
-  const total = Math.min(Math.max(inputCount, numberedLines.length), 40);
+  const numberedLines = extractNumberedQuestionLines(textValue);
+  const rangedCount = countQuestionRanges(textValue);
+  const blankCount = countCompletionBlanks(html, textValue);
+  const bracketedNumbers = countBracketedQuestionNumbers(textValue);
+  const dataQuestions = (html.match(/\bdata-(?:question|answer|blank|q)(?:-id)?=/gi) || []).length;
+  const total = Math.min(Math.max(inputCount, numberedLines.length, rangedCount, blankCount, bracketedNumbers, dataQuestions), 40);
   if (!total) return [];
   const type = mapQuestionType(questionType);
   if (isCompletionType(type)) {
+    const labels = extractCompletionLabels(textValue, total);
     return [{
       type,
       question: labelQuestionType(type),
-      items: Array.from({ length: total }, (_, index) => ({ label: `Question ${index + 1}: ___`, answer: "" }))
+      items: Array.from({ length: total }, (_, index) => ({ label: labels[index] || `Question ${index + 1}: ___`, answer: "" }))
     }];
   }
   return Array.from({ length: total }, (_, index) => ({
@@ -380,6 +392,58 @@ function inferQuestions(html: string, textValue: string, questionType: string): 
     question: numberedLines[index]?.replace(/^\s*\d{1,2}[\).]\s*/, "") || `Question ${index + 1}`,
     answer: ""
   }));
+}
+
+function extractNumberedQuestionLines(textValue: string) {
+  return textValue
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter((line) => /^(?:\d{1,2}[\).]|Question\s+\d+)/i.test(line));
+}
+
+function countQuestionRanges(textValue: string) {
+  let total = 0;
+  const rangePattern = /Questions?\s+(\d{1,2})\s*(?:-|–|to)\s*(\d{1,2})/gi;
+  let match: RegExpExecArray | null;
+  while ((match = rangePattern.exec(textValue)) !== null) {
+    const start = Number(match[1]);
+    const end = Number(match[2]);
+    if (Number.isFinite(start) && Number.isFinite(end) && end >= start) {
+      total += end - start + 1;
+    }
+  }
+  return total;
+}
+
+function countCompletionBlanks(html: string, textValue: string) {
+  const visualBlanks = (textValue.match(/_{3,}|\.{4,}|-{4,}/g) || []).length;
+  const htmlBlanks = (html.match(/(?:class|data-type)=["'][^"']*(?:blank|gap|completion)[^"']*["']/gi) || []).length;
+  const labelledBoxes = (textValue.match(/\b(?:box|blank|gap)\s+\d{1,2}\b/gi) || []).length;
+  return Math.max(visualBlanks, htmlBlanks, labelledBoxes);
+}
+
+function countBracketedQuestionNumbers(textValue: string) {
+  const matches = textValue.match(/(?:^|\s)(?:\[\s*)?\d{1,2}(?:\s*\])?(?=\s|$|\.|\))/g) || [];
+  return matches.length;
+}
+
+function countImportedQuestionUnits(questions: NonNullable<TaskContent["questions"]>) {
+  return questions.reduce((sum, question) => sum + (question.items?.length || 1), 0);
+}
+
+function extractCompletionLabels(textValue: string, total: number) {
+  const lines = textValue
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const labels: string[] = [];
+  for (const line of lines) {
+    if (labels.length >= total) break;
+    if (/_{3,}|\.{4,}|-{4,}/.test(line) || /^\d{1,2}[\).]/.test(line)) {
+      labels.push(line.replace(/\s+/g, " ").slice(0, 120));
+    }
+  }
+  return labels;
 }
 
 function mapQuestionType(value: string) {

@@ -42,9 +42,9 @@ export async function getStudentSession() {
 
 export async function requireStudentSession() {
   const session = await getStudentSession();
-  if (!session) redirect("/");
+  if (!session) redirect("/login");
   if (!session.device_session_id || !session.session_token) {
-    redirect("/?error=session-expired");
+    redirect("/login?error=session-expired");
   }
   if (session.device_session_id === "legacy" && session.session_token === "legacy") {
     return session;
@@ -63,10 +63,10 @@ export async function requireStudentSession() {
     if (isMissingDeviceSessionsError(error)) {
       return session;
     }
-    redirect("/?error=access-setup");
+    redirect("/login?error=access-setup");
   }
   if (!valid) {
-    redirect("/?error=session-revoked");
+    redirect("/login?error=session-revoked");
   }
   return session;
 }
