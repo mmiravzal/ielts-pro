@@ -116,28 +116,11 @@ export async function importHtmlContentAction(formData: FormData) {
   let successPath = "/full-tests/new";
   try {
     const supabase = createServerSupabaseClient();
-    const file = formData.get("html_file");
-    if (!isUpload(file)) throw new Error("Upload an .html file first.");
-    const fileName = String(file.name || "").trim();
-    const lowerName = fileName.toLowerCase();
-    if (!lowerName.endsWith(".html") && !lowerName.endsWith(".htm")) {
-      throw new Error("Only .html files are accepted. JSON, TXT, PDF, and DOCX are not supported in Test Builder.");
-    }
-    const rawHtml = await file.text();
-    const parsed = parseHtmlImport(rawHtml, {
-      fileName,
-      mode: text(formData, "import_mode") || "separate_skill",
-      structure: text(formData, "import_structure") || "single_html",
-      skill: text(formData, "skill") || "reading",
-      subtype: text(formData, "subtype"),
-      questionType: text(formData, "question_type"),
-      manualAudioUrl: text(formData, "manual_audio_url")
-    });
-    const contentName = text(formData, "content_name") || parsed.title;
+    const { parsed, contentName, contentDescription } = await readHtmlImportDraft(formData);
 
     const lesson = await createLesson(supabase, {
       title: `[Draft content] ${contentName}`,
-      description: "Imported content library item. Attach it to a lesson in Content Studio before publishing.",
+      description: contentDescription || "Imported content library item. Attach it to a lesson in Content Studio before publishing.",
       order: 999,
       published: false,
       status: "draft",
@@ -180,6 +163,33 @@ export async function importHtmlContentAction(formData: FormData) {
     redirectBuilderError(error);
   }
   redirect(successPath);
+}
+
+export async function previewHtmlImportAction(_previousState: HtmlPreviewState, formData: FormData): Promise<HtmlPreviewState> {
+  await requireAdminSession();
+  try {
+    const { parsed, contentName, fileName, fileSize } = await readHtmlImportDraft(formData);
+    return {
+      status: "success",
+      data: {
+        title: contentName || parsed.title,
+        fileName,
+        fileSize,
+        skill: parsed.skill,
+        taskType: parsed.taskType,
+        contentType: parsed.contentType,
+        subtype: parsed.subtype,
+        questionCount: parsed.questionCount,
+        answerCount: parsed.answerCount,
+        audioDetected: Boolean(parsed.audioUrl),
+        audioUrl: parsed.audioUrl,
+        warnings: parsed.warnings,
+        previewText: String(parsed.content.preview_text || "").slice(0, 520)
+      }
+    };
+  } catch (error) {
+    return { status: "error", error: readableError(error) };
+  }
 }
 
 export async function attachContentToLessonAction(formData: FormData) {
@@ -269,6 +279,26 @@ function isUpload(value: FormDataEntryValue | null): value is File {
   return !!value && typeof value === "object" && "arrayBuffer" in value && "name" in value && "size" in value && Number(value.size) > 0;
 }
 
+export type HtmlPreviewState = {
+  status: "idle" | "success" | "error";
+  error?: string;
+  data?: {
+    title: string;
+    fileName: string;
+    fileSize: number;
+    skill: string;
+    taskType: string;
+    contentType: string;
+    subtype: string;
+    questionCount: number;
+    answerCount: number;
+    audioDetected: boolean;
+    audioUrl: string | null;
+    warnings: string[];
+    previewText: string;
+  };
+};
+
 type HtmlImportInput = {
   fileName: string;
   mode: string;
@@ -278,6 +308,39 @@ type HtmlImportInput = {
   questionType: string;
   manualAudioUrl: string;
 };
+
+async function readHtmlImportDraft(formData: FormData): Promise<{
+  parsed: ReturnType<typeof parseHtmlImport>;
+  contentName: string;
+  contentDescription: string;
+  fileName: string;
+  fileSize: number;
+}> {
+  const file = formData.get("html_file");
+  if (!isUpload(file)) throw new Error("Upload an .html file first.");
+  const fileName = String(file.name || "").trim();
+  const lowerName = fileName.toLowerCase();
+  if (!lowerName.endsWith(".html") && !lowerName.endsWith(".htm")) {
+    throw new Error("Only .html and .htm files are accepted. JSON, TXT, PDF, and DOCX are not supported in Test Builder.");
+  }
+  const rawHtml = await file.text();
+  const parsed = parseHtmlImport(rawHtml, {
+    fileName,
+    mode: text(formData, "import_mode") || "separate_skill",
+    structure: text(formData, "import_structure") || "auto_detect",
+    skill: text(formData, "skill") || "auto",
+    subtype: text(formData, "subtype"),
+    questionType: text(formData, "question_type"),
+    manualAudioUrl: text(formData, "manual_audio_url")
+  });
+  return {
+    parsed,
+    contentName: text(formData, "content_name") || parsed.title,
+    contentDescription: text(formData, "content_description"),
+    fileName,
+    fileSize: Number(file.size) || rawHtml.length
+  };
+}
 
 function parseHtmlImport(rawHtml: string, input: HtmlImportInput): {
   title: string;
@@ -490,13 +553,24 @@ function labelQuestionType(type: string) {
 
 function countAnswerKeys(html: string, textValue: string) {
   const dataAnswers = (html.match(/data-answer=/gi) || []).length;
-  const answerSection = textValue.match(/answer\s*key[:\s]+([\s\S]+)/i)?.[1] || "";
+  const answerHtmlSection =
+    html.match(/<[^>]+data-answer-key[^>]*>([\s\S]*?)<\/(?:section|div|ol|ul)>/i)?.[1] ||
+    html.match(/<(?:h[1-6]|strong|b)[^>]*>\s*(?:answers?|answer\s*key)\s*<\/(?:h[1-6]|strong|b)>[\s\S]*?(<ol[\s\S]*?<\/ol>|<ul[\s\S]*?<\/ul>)/i)?.[1] ||
+    "";
+  const listAnswers = answerHtmlSection ? (answerHtmlSection.match(/<li\b/gi) || []).length : 0;
+  const answerSection = textValue.match(/(?:answer\s*key|answers?)[:\s]+([\s\S]+)/i)?.[1] || "";
   const numberedAnswers = answerSection ? (answerSection.match(/\b\d{1,2}[\).]\s+\S+/g) || []).length : 0;
-  return Math.max(dataAnswers, numberedAnswers);
+  const inlineAnswers = answerSection && !numberedAnswers && !listAnswers
+    ? answerSection
+        .split(/\s+/)
+        .map((value) => value.replace(/^[^a-z0-9]+|[^a-z0-9]+$/gi, ""))
+        .filter((value) => value.length > 1).length
+    : 0;
+  return Math.max(dataAnswers, listAnswers, numberedAnswers, inlineAnswers);
 }
 
 function defaultSubtype(skill: string, structure: string) {
-  if (structure) return structure;
+  if (structure && structure !== "auto_detect") return structure;
   if (skill === "listening") return "listening_part";
   if (skill === "writing") return "writing_task";
   if (skill === "full_test") return "full_test";
