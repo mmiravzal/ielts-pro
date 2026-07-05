@@ -9,6 +9,7 @@ const navItems = [
   { href: "/student-control", label: "Student Control", icon: "P" },
   { href: "/lessons", label: "Content Studio", icon: "C" },
   { href: "/full-tests/new", label: "Test Builder", icon: "B" },
+  { href: "/html-tests/new", label: "HTML Tests", icon: "H" },
   { href: "/submissions", label: "Writing Review", icon: "W" },
   { href: "/analytics", label: "Analytics", icon: "A" },
   { href: "/settings", label: "Settings", icon: "T" }

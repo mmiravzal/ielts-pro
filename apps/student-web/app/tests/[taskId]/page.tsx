@@ -6,6 +6,7 @@ import { requireStudentSession } from "@/lib/session";
 import { submitTaskAttempt } from "../../actions/attempts";
 import { StudentShell } from "../../components/StudentShell";
 import { WritingAnswerBox } from "../../components/WritingAnswerBox";
+import { HtmlTestStart } from "../../components/HtmlTestStart";
 
 export default async function TestPage({ params }: { params: Promise<{ taskId: string }> }) {
   const { taskId } = await params;
@@ -18,6 +19,40 @@ export default async function TestPage({ params }: { params: Promise<{ taskId: s
     getSubmissionForTask(supabase, session.id, taskId)
   ]);
   if (!task) notFound();
+
+  if (task.source_type === "html") {
+    return (
+      <StudentShell name={session.name}>
+        <main className="test-page">
+          <div className="exam-topline">
+            <div>
+              <Badge tone={toneFor(task.skill)}>{labelFor(task.skill)}</Badge>
+              <h1>{task.title}</h1>
+            </div>
+            <Link href="/dashboard" className="btn btn-secondary">Exit test</Link>
+          </div>
+          {existingSubmission ? (
+            <Card className="submitted-panel">
+              <div>
+                <Badge tone="success">Submitted</Badge>
+                <h2>Your last result is saved</h2>
+                <p>{existingSubmission.score != null ? `Score: ${existingSubmission.score}/${existingSubmission.total ?? "?"}` : "Result saved."}</p>
+              </div>
+              <HtmlTestStart taskId={task.id} label="Retake test" />
+            </Card>
+          ) : (
+            <Card className="panel">
+              <p className="eyebrow">Interactive test</p>
+              <h2>Ready when you are</h2>
+              <p className="muted">This test opens in a new tab. Your score is saved automatically when you finish and submit inside the test.</p>
+              <HtmlTestStart taskId={task.id} />
+            </Card>
+          )}
+        </main>
+      </StudentShell>
+    );
+  }
+
   const content = parseTaskContent<TaskContent>(task.content, { questions: [] });
   const questions = buildRenderableQuestions(content, task);
   const audioUrl = getTaskAudioUrl(content, task);

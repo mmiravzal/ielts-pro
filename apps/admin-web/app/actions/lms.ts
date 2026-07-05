@@ -111,6 +111,62 @@ export async function revokeAllDevicesAction(formData: FormData) {
   revalidatePath("/dashboard");
 }
 
+export async function uploadHtmlTestAction(formData: FormData) {
+  await requireAdminSession();
+  let successPath = "/html-tests/new";
+  try {
+    const file = formData.get("html_file");
+    if (!isUpload(file)) throw new Error("Upload an .html file first.");
+    const lowerName = String(file.name || "").toLowerCase();
+    if (!lowerName.endsWith(".html") && !lowerName.endsWith(".htm")) {
+      throw new Error("Only .html or .htm files are accepted.");
+    }
+    const title = text(formData, "title") || String(file.name || "").replace(/\.(html?|htm)$/i, "").trim() || "HTML test";
+    const skill = text(formData, "skill") || "reading";
+    const subtype = text(formData, "subtype");
+    const published = formData.get("published") === "on";
+    const supabase = createServerSupabaseClient();
+
+    const lesson = await createLesson(supabase, {
+      title,
+      description: "Interactive HTML test uploaded by the teacher.",
+      order: 500,
+      published,
+      status: published ? "published" : "draft",
+      skill
+    });
+
+    const task = await createTask(supabase, {
+      lesson_id: lesson.id,
+      title,
+      skill,
+      task_type: "html_test",
+      content: JSON.stringify({ source_type: "html", subtype: subtype || null }),
+      order: 1,
+      source_type: "html",
+      subtype: subtype || null,
+      content_status: published ? "published" : "draft"
+    });
+
+    const buffer = Buffer.from(await file.arrayBuffer());
+    const storagePath = `${task.id}.html`;
+    const upload = await supabase.storage
+      .from("html-tests")
+      .upload(storagePath, buffer, { contentType: "text/html; charset=utf-8", upsert: true });
+    if (upload.error) throw new Error(`Storage upload failed: ${upload.error.message}`);
+
+    await updateTask(supabase, task.id, { html_path: storagePath });
+
+    revalidatePath("/lessons");
+    revalidatePath("/dashboard");
+    const params = new URLSearchParams({ saved: "1", title, skill, published: published ? "yes" : "no" });
+    successPath = `/html-tests/new?${params.toString()}`;
+  } catch (error) {
+    redirect(`/html-tests/new?error=${encodeURIComponent(readableError(error))}`);
+  }
+  redirect(successPath);
+}
+
 export async function importHtmlContentAction(formData: FormData) {
   await requireAdminSession();
   let successPath = "/full-tests/new";
