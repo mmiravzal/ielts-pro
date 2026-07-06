@@ -94,20 +94,22 @@ export default async function TestPage({ params }: { params: Promise<{ taskId: s
 
   const content = parseTaskContent<TaskContent>(task.content, { questions: [] });
   const questions = buildRenderableQuestions(content, task);
+  const questionRows = buildQuestionRows(questions);
   const audioUrl = getTaskAudioUrl(content, task);
   const questionCount = questions.length;
+  const answerCount = questionRows.reduce((total, row) => total + row.answerCount, 0);
   const isFullTest = task.skill === "full_test";
   const timeLimitMinutes = Number(content.time_limit_minutes || content.duration_minutes || defaultTimeForSkill(task.skill));
 
   return (
-    <StudentShell name={session.name}>
+    <StudentShell name={session.name} groupName={student?.groups?.name} variant="exam">
       <main className="test-page">
         <div className="exam-topline">
           <div>
             <Badge tone={toneFor(task.skill)}>{labelFor(task.skill)}</Badge>
             <h1>{task.title}</h1>
           </div>
-          <Link href="/dashboard" className="btn btn-secondary">Exit test</Link>
+          <Link href="/practice" className="btn btn-secondary">Exit test</Link>
         </div>
 
         {existingSubmission ? (
@@ -118,13 +120,13 @@ export default async function TestPage({ params }: { params: Promise<{ taskId: s
               <p>{existingSubmission.score != null ? `Score: ${existingSubmission.score}/${existingSubmission.total ?? "?"}` : "Writing submissions wait for teacher review."}</p>
               {existingSubmission.feedback ? <p><strong>Teacher feedback:</strong> {existingSubmission.feedback}</p> : null}
             </div>
-            <Link href="/progress" className="btn btn-primary">View progress</Link>
+            <Link href="/results" className="btn btn-primary">View results</Link>
           </Card>
         ) : (
           <form action={submitTaskAttempt} className="exam-layout" id="test-answer-form" data-testid="test-answer-form">
             <input type="hidden" name="taskId" value={task.id} />
             <div className="exam-status-strip">
-              <span>{questionCount || (task.skill === "writing" ? 1 : 0)} tasks</span>
+              <span>{answerCount || (task.skill === "writing" ? 1 : 0)} {task.skill === "writing" ? "task" : "answers"}</span>
               <TestTimer minutes={timeLimitMinutes} />
               <span>{task.skill === "writing" ? "Teacher reviewed" : "Auto checked"}</span>
             </div>
@@ -161,7 +163,8 @@ export default async function TestPage({ params }: { params: Promise<{ taskId: s
               <div className="question-panel-head">
                 <div>
                   <p className="eyebrow">Answer sheet</p>
-                <h2>{task.skill === "writing" ? "Your response" : `${questionCount} questions`}</h2>
+                  <h2>{task.skill === "writing" ? "Your response" : `${answerCount} answer${answerCount === 1 ? "" : "s"}`}</h2>
+                  {questionCount > 0 && answerCount !== questionCount ? <p className="muted">{questionCount} imported question group{questionCount === 1 ? "" : "s"}</p> : null}
                 </div>
                 {timeLimitMinutes ? <Badge tone="warning">{timeLimitMinutes} min</Badge> : null}
               </div>
@@ -169,7 +172,7 @@ export default async function TestPage({ params }: { params: Promise<{ taskId: s
                 <WritingAnswerBox name="writing_answer" label="Your response" placeholder="Write your IELTS response here..." minWords={content.min_words} required />
               ) : (
                 <>
-                  {questions.length ? questions.map((question, index) => <QuestionInput question={question} index={index} key={index} />) : (
+                  {questionRows.length ? questionRows.map((row) => <QuestionInput question={row.question} index={row.index} firstAnswerNumber={row.firstAnswerNumber} key={row.index} />) : (
                     <EmptyState
                       title="Teacher answer sheet needs review"
                       body="The imported HTML is saved, but the parser could not build student answer fields. Ask the teacher to review the Test Builder preview before publishing."
@@ -184,7 +187,7 @@ export default async function TestPage({ params }: { params: Promise<{ taskId: s
             </section>
             <aside className="card test-aside">
               <h3>Question navigator</h3>
-              <QuestionNavigator count={questionCount} />
+              <QuestionNavigator count={answerCount} />
               <p className="muted">Use the numbers to jump through the task. Review your answers before submitting.</p>
             </aside>
           </form>
@@ -239,12 +242,33 @@ function defaultTimeForSkill(skill: string) {
   return 60;
 }
 
-function QuestionInput({ question, index }: { question: Question; index: number }) {
+function buildQuestionRows(questions: Question[]) {
+  let offset = 0;
+  return questions.map((question, index) => {
+    const answerCount = countAnswerFields(question);
+    const row = {
+      question,
+      index,
+      answerCount,
+      firstAnswerNumber: offset + 1
+    };
+    offset += answerCount;
+    return row;
+  });
+}
+
+function countAnswerFields(question: Question) {
+  if (question.items?.length) return question.items.length;
+  if (question.type === "mcq_multi" && Array.isArray(question.answer) && question.answer.length > 1) return question.answer.length;
+  return 1;
+}
+
+function QuestionInput({ question, index, firstAnswerNumber }: { question: Question; index: number; firstAnswerNumber: number }) {
   if (question.options?.length) {
     const multiple = question.type === "mcq_multi";
     return (
-      <fieldset className="question" id={`question-${index + 1}`}>
-        <legend><strong>{index + 1}. {question.question}</strong></legend>
+      <fieldset className="question" id={`question-${firstAnswerNumber}`}>
+        <legend><strong>{firstAnswerNumber}. {question.question}</strong></legend>
         {question.options.map((option, optionIndex) => {
           const letter = String.fromCharCode(65 + optionIndex);
           return (
@@ -259,38 +283,45 @@ function QuestionInput({ question, index }: { question: Question; index: number 
   }
 
   if (question.items?.length) {
+    const lastAnswerNumber = firstAnswerNumber + question.items.length - 1;
     return (
-      <fieldset className="question" id={`question-${index + 1}`}>
-        <legend><strong>{index + 1}. {question.question || "Complete the items"}</strong></legend>
+      <fieldset className="question" id={`question-group-${index + 1}`}>
+        <legend><strong>Questions {firstAnswerNumber}{lastAnswerNumber > firstAnswerNumber ? `-${lastAnswerNumber}` : ""}. {question.question || "Complete the items"}</strong></legend>
         {question.items.map((item, itemIndex) => (
-          <CompletionLine index={index} itemIndex={itemIndex} label={item.label || `Item ${itemIndex + 1}: ___`} key={itemIndex} />
+          <CompletionLine
+            index={index}
+            itemIndex={itemIndex}
+            label={item.label || `Item ${firstAnswerNumber + itemIndex}: ___`}
+            number={firstAnswerNumber + itemIndex}
+            key={itemIndex}
+          />
         ))}
       </fieldset>
     );
   }
 
   return (
-    <label className="question" id={`question-${index + 1}`}>
-      <strong>{index + 1}. {question.question}</strong>
+    <label className="question" id={`question-${firstAnswerNumber}`}>
+      <strong>{firstAnswerNumber}. {question.question}</strong>
       <Input name={`q_${index}`} placeholder="Your answer" />
     </label>
   );
 }
 
-function CompletionLine({ index, itemIndex, label }: { index: number; itemIndex: number; label: string }) {
+function CompletionLine({ index, itemIndex, label, number }: { index: number; itemIndex: number; label: string; number: number }) {
   const parts = label.includes("___") ? label.split("___") : label.split("[blank]");
   if (parts.length < 2) {
     return (
-      <label className="completion-line">
+      <label className="completion-line" id={`question-${number}`}>
         <span>{label}</span>
-        <Input name={`q_${index}_${itemIndex}`} placeholder="Answer" />
+        <Input name={`q_${index}_${itemIndex}`} placeholder="Answer" aria-label={`Question ${number}`} />
       </label>
     );
   }
   return (
-    <label className="completion-line completion-inline">
+    <label className="completion-line completion-inline" id={`question-${number}`}>
       <span>{parts[0]}</span>
-      <Input name={`q_${index}_${itemIndex}`} placeholder={`${itemIndex + 1}`} />
+      <Input name={`q_${index}_${itemIndex}`} placeholder={`${number}`} aria-label={`Question ${number}`} />
       <span>{parts.slice(1).join("___")}</span>
     </label>
   );

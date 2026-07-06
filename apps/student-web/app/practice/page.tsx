@@ -1,39 +1,18 @@
 import Link from "next/link";
-import { Badge, EmptyState, LinkButton, ProgressBar, StatCard, TestCard } from "@ielts-pro/ui";
+import type { CSSProperties } from "react";
 import { createServerSupabaseClient, getPublishedTasksForStudent, getStudentById, getStudentSubmissions } from "@ielts-pro/shared";
 import { requireStudentSession } from "@/lib/session";
 import { StudentShell } from "../components/StudentShell";
-
-const skillCards = [
-  {
-    href: "/practice/reading",
-    className: "skill-reading",
-    label: "Reading",
-    copy: "Passages, matching, headings, completion",
-    skill: "reading"
-  },
-  {
-    href: "/practice/listening",
-    className: "skill-listening",
-    label: "Listening",
-    copy: "Audio tasks, note completion, multiple choice",
-    skill: "listening"
-  },
-  {
-    href: "/practice/writing",
-    className: "skill-writing",
-    label: "Writing",
-    copy: "Task 1 and Task 2 responses with feedback",
-    skill: "writing"
-  },
-  {
-    href: "/practice/full-tests",
-    className: "skill-full",
-    label: "Full Tests",
-    copy: "Reading, Listening, and Writing in one flow",
-    skill: "full_test"
-  }
-] as const;
+import {
+  completionState,
+  labelForSkill,
+  nextTask,
+  progressBySkill,
+  studentSkillCards,
+  taskSummary,
+  tasksForSkill,
+  toneForSkill
+} from "../student-utils";
 
 export default async function PracticePage() {
   const session = await requireStudentSession();
@@ -44,73 +23,102 @@ export default async function PracticePage() {
     getPublishedTasksForStudent(supabase, currentGroupId),
     getStudentSubmissions(supabase, session.id)
   ]);
-  const completedIds = new Set(submissions.map((submission) => submission.task_id));
-  const completed = completedIds.size;
-  const openTasks = tasks.filter((task) => !completedIds.has(task.id));
-  const nextTask = openTasks[0] || tasks[0];
-  const progress = tasks.length ? Math.round((completed / tasks.length) * 100) : 0;
+  const progress = completionState(tasks, submissions);
+  const next = nextTask(tasks, submissions);
+  const skillProgress = progressBySkill(tasks, submissions);
 
   return (
-    <StudentShell name={session.name}>
-      <main className="page">
-        <section className="practice-hero">
+    <StudentShell
+      name={session.name}
+      groupName={student?.groups?.name}
+      sectionLabel="Practice"
+      sectionDescription="Choose a skill and open tests in a focused exam tab"
+    >
+      <main className="student-page student-practice-page">
+        <section className="student-hero-panel">
           <div>
-            <p className="eyebrow">Practice tests</p>
-            <h1>Choose your IELTS skill and continue your plan.</h1>
-            <p className="muted">{student?.groups?.name ? `Showing lessons assigned to ${student.groups.name}.` : "No group assigned yet. Ask your teacher to place you into a study group."}</p>
-            <div className="hero-actions">
-              {nextTask ? <LinkButton href={`/tests/${nextTask.id}`} target="_blank" rel="noopener noreferrer">Continue next task</LinkButton> : null}
-              <LinkButton href="/progress" variant="secondary">Result history</LinkButton>
+            <p className="student-kicker">Choose your skill</p>
+            <h1>IELTS practice built around your teacher plan.</h1>
+            <p>
+              {student?.groups?.name
+                ? `Showing work assigned to ${student.groups.name}.`
+                : "No group is assigned yet. Ask your teacher to connect your Student Access ID to a group."}
+            </p>
+            <div className="student-action-row">
+              {next ? (
+                <Link className="student-primary-button" href={`/tests/${next.id}`} target="_blank" rel="noopener noreferrer">
+                  Continue next task
+                </Link>
+              ) : (
+                <Link className="student-primary-button" href="/lessons">Open lessons</Link>
+              )}
+              <Link className="student-secondary-button" href="/results">Result history</Link>
             </div>
           </div>
-          <div className="practice-score">
+          <div className="student-hero-progress">
             <span>Course progress</span>
-            <strong>{progress}%</strong>
-            <ProgressBar value={progress} label="Course progress" />
-            <small>{completed}/{tasks.length} tasks submitted</small>
+            <strong>{progress.percent}%</strong>
+            <div className="student-progress-bar" style={{ "--student-progress": `${progress.percent}%` } as CSSProperties} />
+            <small>{progress.completed}/{tasks.length} tasks submitted</small>
           </div>
         </section>
 
-        <section className="practice-skills" aria-label="Choose a skill">
-          {skillCards.map((card) => {
-            const count = tasks.filter((task) => task.skill === card.skill).length;
-            const done = tasks.filter((task) => task.skill === card.skill && completedIds.has(task.id)).length;
+        <section className="student-skill-grid" aria-label="Choose an IELTS skill">
+          {studentSkillCards.map((card) => {
+            const data = skillProgress.find((skill) => skill.key === card.key);
+            const available = tasksForSkill(tasks, card.key).length;
             return (
-              <Link href={card.href} className={`practice-skill-link ${card.className}`} key={card.href}>
-                <span>{card.label}</span>
-                <strong>{count}</strong>
-                <small>{card.copy}</small>
-                <em>{done}/{count} completed</em>
+              <Link className={`student-skill-card tone-${toneForSkill(card.key)}`} href={card.href} key={card.key}>
+                <span className={`student-skill-icon tone-${toneForSkill(card.key)}`}>{card.mark}</span>
+                <div>
+                  <h2>{card.label}</h2>
+                  <p>{card.duration} · {data?.total || available} task{(data?.total || available) === 1 ? "" : "s"}</p>
+                </div>
+                <small>{card.detail}</small>
+                <em>{data?.done || 0}/{data?.total || available} completed</em>
               </Link>
             );
           })}
         </section>
 
-        <section className="stats-grid" aria-label="Practice summary">
-          <StatCard label="Lessons" value={lessons.length} note="published by teacher" />
-          <StatCard label="Open Tasks" value={openTasks.length} note="available now" />
-          <StatCard label="Attempts" value={submissions.length} note="total submissions" />
-          <StatCard label="Feedback" value={submissions.filter((submission) => submission.feedback).length} note="teacher notes" />
+        <section className="student-stat-grid" aria-label="Practice summary">
+          <MetricCard label="Lessons" value={lessons.length} note="published by teacher" />
+          <MetricCard label="Open Tasks" value={progress.open} note="available now" />
+          <MetricCard label="Attempts" value={submissions.length} note="submitted answers" />
+          <MetricCard label="Feedback" value={submissions.filter((submission) => submission.feedback).length} note="teacher notes" />
         </section>
 
-        <section>
-          <div className="section-head">
-            <h2>Latest published work</h2>
-            <Link href="/dashboard">Dashboard</Link>
+        <section className="student-panel">
+          <div className="student-section-header">
+            <div>
+              <p className="student-kicker">Latest work</p>
+              <h2>Published practice</h2>
+            </div>
+            <Link href="/lessons">View by lesson</Link>
           </div>
-          <div className="test-list">
-            {!currentGroupId ? <EmptyState title="No group assigned yet" body="Your teacher needs to assign your access ID to a group before practice appears here." /> : tasks.slice(0, 8).map((task) => (
-              <TestCard
-                key={task.id}
-                tone={toneFor(task.skill)}
-                meta={labelFor(task.skill)}
-                title={task.title}
-                description={lessons.find((lesson) => lesson.id === task.lesson_id)?.title || "IELTS practice"}
-                status={completedIds.has(task.id) ? <Badge tone="success">Submitted</Badge> : <Badge tone="warning">Open</Badge>}
-                action={<LinkButton href={`/tests/${task.id}`} target="_blank" rel="noopener noreferrer">{completedIds.has(task.id) ? "Review" : "Start"}</LinkButton>}
-              />
-            ))}
-            {currentGroupId && !tasks.length ? <EmptyState title="No practice yet" body="Your teacher has not published IELTS practice work for your group yet." /> : null}
+          <div className="student-task-list">
+            {tasks.slice(0, 10).map((task) => {
+              const submitted = progress.completedIds.has(task.id);
+              return (
+                <article className="student-task-row" key={task.id}>
+                  <span className={`student-skill-icon tone-${toneForSkill(task.skill)}`}>{labelForSkill(task.skill).slice(0, 1)}</span>
+                  <div>
+                    <strong>{task.title}</strong>
+                    <small>{taskSummary(task, lessons)}</small>
+                  </div>
+                  <span className={`student-status-pill ${submitted ? "is-done" : ""}`}>{submitted ? "Submitted" : "Open"}</span>
+                  <Link className="student-small-button" href={`/tests/${task.id}`} target="_blank" rel="noopener noreferrer">
+                    {submitted ? "Review" : "Start"}
+                  </Link>
+                </article>
+              );
+            })}
+            {!tasks.length ? (
+              <div className="student-empty-card">
+                <h3>No practice yet</h3>
+                <p>{currentGroupId ? "Your teacher has not published IELTS work for this group yet." : "Your Student Access ID is not assigned to a group yet."}</p>
+              </div>
+            ) : null}
           </div>
         </section>
       </main>
@@ -118,18 +126,12 @@ export default async function PracticePage() {
   );
 }
 
-function toneFor(skill: string) {
-  if (skill === "reading") return "reading";
-  if (skill === "listening") return "listening";
-  if (skill === "writing") return "writing";
-  if (skill === "full_test") return "full";
-  return "neutral";
-}
-
-function labelFor(skill: string) {
-  if (skill === "reading") return "Reading";
-  if (skill === "listening") return "Listening";
-  if (skill === "writing") return "Writing";
-  if (skill === "full_test") return "Full Test";
-  return skill;
+function MetricCard({ label, value, note }: { label: string; value: string | number; note: string }) {
+  return (
+    <article className="student-metric-card">
+      <span>{label}</span>
+      <strong>{value}</strong>
+      <small>{note}</small>
+    </article>
+  );
 }
