@@ -36,7 +36,7 @@ export default async function TestPage({ params }: { params: Promise<{ taskId: s
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ taskId: TASK_ID, score: result.score, total: result.total, answers: result.answers || null })
+        body: JSON.stringify({ taskId: TASK_ID, score: result.score, total: result.total, answers: result.answers || null, results: result.results || null })
       });
       var json = await res.json();
       if (!json || !json.ok) console.error('submitIeltsScore rejected', json);

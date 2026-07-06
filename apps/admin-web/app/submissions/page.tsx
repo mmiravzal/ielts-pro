@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Badge, Button, Card, EmptyState, ErrorState, Input, StatCard, Textarea } from "@ielts-pro/ui";
-import { createServerSupabaseClient, getWritingSubmissions } from "@ielts-pro/shared";
+import { createServerSupabaseClient, getAllSubmissions } from "@ielts-pro/shared";
 import { requireAdminSession } from "@/lib/session";
 import { AdminShell } from "../components/AdminShell";
 import { reviewSubmissionAction } from "../actions/lms";
@@ -24,9 +24,10 @@ export default async function SubmissionsPage() {
       </AdminShell>
     );
   }
-  const writing = submissions.filter((submission) => submission.tasks?.skill === "writing");
-  const pending = writing.filter((submission) => submission.score == null);
-  const reviewed = writing.filter((submission) => submission.score != null);
+  const writing = submissions.filter((s) => s.tasks?.skill === "writing");
+  const pending = writing.filter((s) => s.score == null);
+  const reviewed = writing.filter((s) => s.score != null);
+  const nonWriting = submissions.filter((s) => s.tasks?.skill !== "writing");
   return (
     <AdminShell email={admin.email}>
       <div className="page-head page-head-hero">
@@ -77,15 +78,92 @@ export default async function SubmissionsPage() {
         ))}
         {!writing.length ? <EmptyState title="No writing submissions yet" body="Writing attempts will appear here after students submit a writing task." /> : null}
       </div>
+
+      {nonWriting.length ? (
+        <section style={{ marginTop: 32 }}>
+          <div className="page-head page-head-hero">
+            <div>
+              <p className="eyebrow">Test results</p>
+              <h2>All reading, listening &amp; full-test attempts</h2>
+              <p className="muted">Auto-scored results with per-question breakdown from HTML and standard tests.</p>
+            </div>
+          </div>
+          <div className="lesson-list">
+            {nonWriting.map((submission) => (
+              <Card className="panel" key={submission.id}>
+                <div className="writing-review-head">
+                  <div>
+                    <Badge tone={toneFor(submission.tasks?.skill)}>{submission.tasks?.skill || "test"}</Badge>
+                    <h3>{submission.students?.name || "Student"} - {submission.tasks?.title || "Test"}</h3>
+                    <p className="muted">{new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(new Date(submission.submitted_at))}</p>
+                  </div>
+                  <div className="review-score-chip">
+                    <span>Score</span>
+                    <strong>{submission.score ?? "-"}/{submission.total ?? "?"}</strong>
+                  </div>
+                </div>
+                {submission.results?.length ? (
+                  <details className="results-details">
+                    <summary>View per-question breakdown ({submission.results.length} questions)</summary>
+                    <table className="results-table">
+                      <thead>
+                        <tr>
+                          <th>#</th>
+                          <th>Question</th>
+                          <th>Your answer</th>
+                          <th>Correct answer</th>
+                          <th>Result</th>
+                          <th>Points</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {submission.results.map((r) => (
+                          <tr key={r.questionIndex} className={r.isCorrect ? "result-correct" : "result-incorrect"}>
+                            <td>{r.questionIndex + 1}</td>
+                            <td>{r.question ?? ""}</td>
+                            <td>{formatAnswer(r.studentAnswer)}</td>
+                            <td>{formatAnswer(r.correctAnswer)}</td>
+                            <td>{r.isCorrect ? "✓" : "✗"}</td>
+                            <td>{r.points}/{r.maxPoints}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </details>
+                ) : submission.answer ? (
+                  <details className="results-details">
+                    <summary>View raw answer data</summary>
+                    <pre className="answer-box">{submission.answer}</pre>
+                  </details>
+                ) : null}
+              </Card>
+            ))}
+          </div>
+        </section>
+      ) : null}
     </AdminShell>
   );
 }
 
 async function getSubmissionsSafely() {
   try {
-    return await getWritingSubmissions(createServerSupabaseClient());
+    return await getAllSubmissions(createServerSupabaseClient());
   } catch (error) {
     console.error("Writing submissions failed", error);
     return null;
   }
+}
+
+function toneFor(skill?: string) {
+  if (skill === "reading") return "reading";
+  if (skill === "listening") return "listening";
+  if (skill === "writing") return "writing";
+  if (skill === "full_test") return "full";
+  return "neutral";
+}
+
+function formatAnswer(value: unknown): string {
+  if (value == null) return "-";
+  if (Array.isArray(value)) return value.join(", ");
+  return String(value);
 }

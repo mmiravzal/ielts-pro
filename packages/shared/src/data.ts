@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { defaultPublicSiteSettings } from "./site-content.js";
-import type { Group, Lesson, NewTaskInput, PublicSiteSettings, Student, StudentDeviceSession, Submission, Task } from "./types.js";
+import type { Group, Lesson, NewTaskInput, PublicSiteSettings, QuestionResult, Student, StudentDeviceSession, Submission, Task } from "./types.js";
 
 const DEFAULT_GROUPS = [
   { name: "Introduction group", slug: "introduction", order: 1 },
@@ -302,6 +302,35 @@ export async function getStudentSubmissions(supabase: SupabaseClient, studentId:
   return (fallback.data || []) as Submission[];
 }
 
+export async function getSubmissionDetail(supabase: SupabaseClient, submissionId: string) {
+  const { data, error } = await supabase
+    .from("submissions")
+    .select("*,students(name,student_code),tasks(title,skill,lessons(title))")
+    .eq("id", submissionId)
+    .maybeSingle();
+  if (error) throw error;
+  return data as Submission | null;
+}
+
+export async function getAllSubmissions(supabase: SupabaseClient, filters?: { studentId?: string; taskId?: string; skill?: string }) {
+  let query = supabase
+    .from("submissions")
+    .select("*,students(name,student_code),tasks(title,skill,lessons(title))")
+    .order("submitted_at", { ascending: false });
+  if (filters?.studentId) query = query.eq("student_id", filters.studentId);
+  if (filters?.taskId) query = query.eq("task_id", filters.taskId);
+  if (filters?.skill) query = query.eq("tasks.skill", filters.skill);
+  const { data, error } = await query;
+  if (!error) return (data || []) as Submission[];
+  if (!isMissingRelationOrColumnError(error)) throw error;
+  const fallback = await supabase
+    .from("submissions")
+    .select("*")
+    .order("submitted_at", { ascending: false });
+  if (fallback.error) throw fallback.error;
+  return (fallback.data || []) as Submission[];
+}
+
 export async function getPublishedTaskById(supabase: SupabaseClient, taskId: string) {
   const { data: task, error } = await supabase
     .from("tasks")
@@ -356,7 +385,7 @@ export async function getSubmissionForTask(supabase: SupabaseClient, studentId: 
 
 export async function submitAttempt(
   supabase: SupabaseClient,
-  input: { studentId: string; taskId: string; answer: string; score?: number | null; total?: number | null }
+  input: { studentId: string; taskId: string; answer: string; score?: number | null; total?: number | null; results?: QuestionResult[] | null }
 ) {
   const { data, error } = await supabase
     .from("submissions")
@@ -365,7 +394,8 @@ export async function submitAttempt(
       task_id: input.taskId,
       answer: input.answer,
       score: input.score ?? null,
-      total: input.total ?? null
+      total: input.total ?? null,
+      results: input.results ?? null
     })
     .select()
     .single();

@@ -84,6 +84,7 @@ export type Submission = {
   score: number | null;
   total: number | null;
   feedback: string | null;
+  results: QuestionResult[] | null;
   submitted_at: string;
   students?: Pick<Student, "name" | "student_code"> | null;
   tasks?: (Pick<Task, "title" | "skill"> & { lessons?: Pick<Lesson, "title"> | null }) | null;
@@ -154,6 +155,24 @@ export type StudentSession = Pick<Student, "id" | "name" | "student_code" | "gro
   session_token: string;
 };
 export type AdminSession = { id: string; email: string };
+
+export type QuestionResult = {
+  questionIndex: number;
+  questionType?: string;
+  question?: string;
+  studentAnswer: unknown;
+  correctAnswer: unknown;
+  isCorrect: boolean;
+  points: number;
+  maxPoints: number;
+};
+
+export type HtmlTestPayload = {
+  score: number;
+  total: number;
+  answers: Record<string, unknown>;
+  results?: QuestionResult[];
+};
 
 export type PublicSiteSettings = {
   id: string;
