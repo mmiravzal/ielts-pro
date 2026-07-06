@@ -1,4 +1,4 @@
-import type { Question, Task, TaskContent } from "./types.js";
+import type { Question, Task, TaskContent } from "./types";
 
 export function parseTaskContent<T>(raw: string | null, fallback: T): T {
   if (!raw) return fallback;
