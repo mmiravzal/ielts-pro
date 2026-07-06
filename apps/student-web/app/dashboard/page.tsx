@@ -1,9 +1,21 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
-import { Badge, Card, EmptyState, LinkButton, ProgressBar, StatCard, TestCard } from "@ielts-pro/ui";
+import type { CSSProperties } from "react";
 import { createServerSupabaseClient, getPublishedTasksForStudent, getStudentById, getStudentSubmissions } from "@ielts-pro/shared";
 import { requireStudentSession } from "@/lib/session";
 import { StudentShell } from "../components/StudentShell";
+import {
+  averageScore,
+  completionState,
+  feedbackSubmissions,
+  formatDate,
+  labelForSkill,
+  nextTask,
+  progressBySkill,
+  reviewedSubmissions,
+  scoreLabel,
+  taskSummary,
+  toneForSkill
+} from "../student-utils";
 
 export default async function DashboardPage() {
   const session = await requireStudentSession();
@@ -14,108 +26,161 @@ export default async function DashboardPage() {
     getPublishedTasksForStudent(supabase, currentGroupId),
     getStudentSubmissions(supabase, session.id)
   ]);
-  const completedIds = new Set(submissions.map((submission) => submission.task_id));
-  const completed = completedIds.size;
-  const progress = tasks.length ? Math.round((completed / tasks.length) * 100) : 0;
-  const writingPending = submissions.filter((submission) => submission.tasks?.skill === "writing" && submission.score == null).length;
-
-  if (!session) redirect("/login");
-  const readingCount = tasks.filter((task) => task.skill === "reading").length;
-  const listeningCount = tasks.filter((task) => task.skill === "listening").length;
-  const writingCount = tasks.filter((task) => task.skill === "writing").length;
+  const groupName = student?.groups?.name || "Teacher group pending";
+  const progress = completionState(tasks, submissions);
+  const skills = progressBySkill(tasks, submissions);
+  const next = nextTask(tasks, submissions);
+  const reviewed = reviewedSubmissions(submissions);
+  const feedback = feedbackSubmissions(submissions);
+  const avgScore = averageScore(submissions);
 
   return (
-    <StudentShell name={session.name}>
-      <main className="page">
-        <Card className="hero-card">
-          <div>
-            <p className="eyebrow">Student practice plan</p>
-            <h1>Welcome back, {session.name}</h1>
-            <p>{student?.groups?.name ? `You are assigned to ${student.groups.name}.` : "No group assigned yet. Contact your teacher to unlock lessons."}</p>
-            <div className="hero-actions">
-              <LinkButton href="/practice">Start practice</LinkButton>
-              <LinkButton variant="secondary" href="/progress">View results</LinkButton>
+    <StudentShell
+      name={session.name}
+      groupName={groupName}
+      sectionLabel="Dashboard"
+      sectionDescription="Practice plan, results, and teacher feedback"
+    >
+      <main className="student-page student-dashboard-page">
+        <section className="student-dashboard-grid">
+          <article className="student-welcome-card">
+            <p className="student-kicker">Welcome back</p>
+            <h1>{session.name}</h1>
+            <p>{currentGroupId ? `Your private IELTS workspace is connected to ${groupName}.` : "Ask your teacher to assign your access ID to a group so lessons can appear here."}</p>
+            <div className="student-action-row">
+              {next ? (
+                <Link className="student-primary-button" href={`/tests/${next.id}`} target="_blank" rel="noopener noreferrer">
+                  Continue practice
+                </Link>
+              ) : (
+                <Link className="student-primary-button" href="/practice">Open practice</Link>
+              )}
+              <Link className="student-secondary-button" href="/results">View results</Link>
             </div>
-            <div className="exam-strip" aria-label="Practice flow">
-              <span>Choose skill</span>
-              <span>Answer task</span>
-              <span>Review result</span>
-            </div>
-          </div>
-          <div className="hero-meter">
-            <span>{student?.groups?.name || "Group pending"}</span>
-            <strong>{progress}%</strong>
-            <ProgressBar value={progress} label="Overall progress" />
-            <small>{completed}/{tasks.length || 0} tasks submitted</small>
-          </div>
-        </Card>
+          </article>
 
-        <section className="skill-grid" aria-label="IELTS skill categories">
-          <Link href="/practice/reading" className="card skill-card skill-reading"><span>Reading</span><strong>{readingCount}</strong><small>passage tasks</small></Link>
-          <Link href="/practice/listening" className="card skill-card skill-listening"><span>Listening</span><strong>{listeningCount}</strong><small>audio tasks</small></Link>
-          <Link href="/practice/writing" className="card skill-card skill-writing"><span>Writing</span><strong>{writingCount}</strong><small>teacher-reviewed</small></Link>
-          <Link href="/practice/full-tests" className="card skill-card skill-full"><span>Full tests</span><strong>{tasks.filter((task) => task.skill === "full_test").length}</strong><small>exam practice</small></Link>
-        </section>
-
-        <section className="stats-grid" aria-label="Progress summary">
-          <StatCard label="Available Tasks" value={tasks.length} note={`${lessons.length} published lessons`} />
-          <StatCard label="Completed" value={completed} note="submitted attempts" />
-          <StatCard label="Writing Pending" value={writingPending} note="waiting for review" />
-          <StatCard label="Feedback" value={submissions.filter((s) => !!s.feedback).length} note="teacher notes received" />
-        </section>
-
-        <div className="content-grid">
-          <section id="practice">
-            <div className="section-head">
-              <h2>Assigned lessons</h2>
-              <Link href="/progress">View progress</Link>
+          <aside className="student-panel student-inbox-card">
+            <div className="student-panel-head">
+              <p className="student-kicker">Inbox</p>
+              <strong>{feedback.length}</strong>
             </div>
-            <div className="test-list">
-              {!currentGroupId ? <EmptyState title="No group assigned yet" body="Your teacher needs to assign your Student Access ID to a group before lessons appear here." /> : tasks.length ? tasks.map((task) => (
-                <TestCard
-                  key={task.id}
-                  tone={toneFor(task.skill)}
-                  meta={labelFor(task.skill)}
-                  title={task.title}
-                  description={lessons.find((lesson) => lesson.id === task.lesson_id)?.title || "IELTS practice"}
-                  status={completedIds.has(task.id) ? <Badge tone="success">Submitted</Badge> : <Badge tone="warning">Open</Badge>}
-                  action={<LinkButton href={`/tests/${task.id}`} target="_blank" rel="noopener noreferrer">{completedIds.has(task.id) ? "Review" : "Start"}</LinkButton>}
-                />
-              )) : <EmptyState title="No published tests" body="Your teacher has not published practice work for your group yet." />}
-            </div>
-          </section>
-
-          <aside className="right-rail">
-            <div className="section-head"><h2>Recent Attempts</h2></div>
-            <div className="attempt-list">
-              {submissions.slice(0, 6).map((submission) => (
-                <Card className="attempt-item" key={submission.id}>
-                  <strong>{submission.tasks?.title || "Practice task"}</strong>
-                  <small>{new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(new Date(submission.submitted_at))}</small>
-                  {submission.score != null ? <span>{submission.score}/{submission.total ?? "?"}</span> : <Badge tone="warning">Pending review</Badge>}
-                </Card>
-              ))}
-              {!submissions.length ? <EmptyState title="No attempts yet" body="Start a test to build your progress history." /> : null}
-            </div>
+            {feedback[0] ? (
+              <div className="student-feedback-preview">
+                <span>{feedback[0].tasks?.title || "Teacher feedback"}</span>
+                <p>{feedback[0].feedback}</p>
+                <small>{formatDate(feedback[0].submitted_at, { dateStyle: "medium", timeStyle: "short" })}</small>
+              </div>
+            ) : (
+              <p className="student-muted">No teacher feedback yet. Submit writing or full-test work to receive review notes.</p>
+            )}
           </aside>
-        </div>
+        </section>
+
+        <section className="student-stat-grid" aria-label="Dashboard summary">
+          <MetricCard label="Tasks" value={tasks.length} note={`${lessons.length} published lessons`} />
+          <MetricCard label="Completed" value={progress.completed} note={`${progress.percent}% overall progress`} />
+          <MetricCard label="Reviewed" value={reviewed.length} note={avgScore ? `Average score ${avgScore}` : "No reviewed score yet"} />
+          <MetricCard label="Feedback" value={feedback.length} note="teacher notes received" />
+        </section>
+
+        <section className="student-two-column">
+          <article className="student-panel">
+            <div className="student-section-header">
+              <div>
+                <p className="student-kicker">Skill map</p>
+                <h2>Practice progress</h2>
+              </div>
+              <Link href="/practice">All skills</Link>
+            </div>
+            <div className="student-progress-list">
+              {skills.map((skill) => (
+                <Link className="student-progress-row" href={skill.href} key={skill.key}>
+                  <span className={`student-skill-icon tone-${toneForSkill(skill.key)}`}>{skill.mark}</span>
+                  <div>
+                    <strong>{skill.label}</strong>
+                    <small>{skill.done}/{skill.total} completed</small>
+                  </div>
+                  <em>{skill.percent}%</em>
+                </Link>
+              ))}
+            </div>
+          </article>
+
+          <article className="student-panel student-donut-panel">
+            <p className="student-kicker">Completion</p>
+            <div className="student-donut" style={{ "--student-progress": `${progress.percent}%` } as CSSProperties}>
+              <strong>{progress.percent}%</strong>
+              <span>{progress.completed}/{tasks.length || 0}</span>
+            </div>
+            <p className="student-muted">Your dashboard updates from real submitted attempts, not static demo data.</p>
+          </article>
+        </section>
+
+        <section className="student-panel">
+          <div className="student-section-header">
+            <div>
+              <p className="student-kicker">Assigned work</p>
+              <h2>Latest practice</h2>
+            </div>
+            <Link href="/lessons">Open lessons</Link>
+          </div>
+          <div className="student-task-list">
+            {tasks.slice(0, 6).map((task) => {
+              const submitted = progress.completedIds.has(task.id);
+              return (
+                <article className="student-task-row" key={task.id}>
+                  <span className={`student-skill-icon tone-${toneForSkill(task.skill)}`}>{labelForSkill(task.skill).slice(0, 1)}</span>
+                  <div>
+                    <strong>{task.title}</strong>
+                    <small>{taskSummary(task, lessons)}</small>
+                  </div>
+                  <span className={`student-status-pill ${submitted ? "is-done" : ""}`}>{submitted ? "Submitted" : "Open"}</span>
+                  <Link className="student-small-button" href={`/tests/${task.id}`} target="_blank" rel="noopener noreferrer">
+                    {submitted ? "Review" : "Start"}
+                  </Link>
+                </article>
+              );
+            })}
+            {!tasks.length ? (
+              <div className="student-empty-card">
+                <h3>No published practice yet</h3>
+                <p>{currentGroupId ? "Your teacher has not published IELTS work for this group yet." : "Your teacher needs to assign your Student Access ID to a group first."}</p>
+              </div>
+            ) : null}
+          </div>
+        </section>
+
+        <section className="student-panel">
+          <div className="student-section-header">
+            <div>
+              <p className="student-kicker">Recent results</p>
+              <h2>Attempt history</h2>
+            </div>
+            <Link href="/results">All results</Link>
+          </div>
+          <div className="student-result-strip">
+            {submissions.slice(0, 4).map((submission) => (
+              <article className="student-result-card" key={submission.id}>
+                <span>{labelForSkill(submission.tasks?.skill)}</span>
+                <strong>{submission.tasks?.title || "Practice task"}</strong>
+                <small>{formatDate(submission.submitted_at)}</small>
+                <em>{scoreLabel(submission)}</em>
+              </article>
+            ))}
+            {!submissions.length ? <p className="student-muted">No attempts yet. Start a practice test to build history.</p> : null}
+          </div>
+        </section>
       </main>
     </StudentShell>
   );
 }
 
-function toneFor(skill: string) {
-  if (skill === "reading") return "reading";
-  if (skill === "listening") return "listening";
-  if (skill === "writing") return "writing";
-  if (skill === "full_test") return "full";
-  return "neutral";
-}
-
-function labelFor(skill: string) {
-  if (skill === "reading") return "Reading";
-  if (skill === "listening") return "Listening";
-  if (skill === "writing") return "Writing";
-  if (skill === "full_test") return "Full Test";
-  return skill;
+function MetricCard({ label, value, note }: { label: string; value: string | number; note: string }) {
+  return (
+    <article className="student-metric-card">
+      <span>{label}</span>
+      <strong>{value}</strong>
+      <small>{note}</small>
+    </article>
+  );
 }
