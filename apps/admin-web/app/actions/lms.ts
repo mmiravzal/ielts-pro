@@ -12,6 +12,7 @@ import {
   revokeStudentDeviceSession,
   reviewWritingSubmission,
   setStudentAccessStatus,
+  setTaskGroups,
   updateStudentGroup,
   updateLesson,
   updateSiteSettings,
@@ -268,6 +269,17 @@ export async function attachContentToLessonAction(formData: FormData) {
   revalidatePath("/lessons");
   revalidatePath("/full-tests/new");
   revalidatePath("/dashboard");
+}
+
+export async function updateTaskGroupsAction(formData: FormData) {
+  await requireAdminSession();
+  const taskId = text(formData, "task_id");
+  if (!taskId) return;
+  const groupIds = formData.getAll("group_ids").map((value) => String(value)).filter(Boolean);
+  await setTaskGroups(createServerSupabaseClient(), taskId, groupIds);
+  revalidatePath("/lessons");
+  revalidatePath("/dashboard");
+  revalidatePath("/full-tests/new");
 }
 
 export async function updateLessonGroupAction(formData: FormData) {

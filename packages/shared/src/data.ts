@@ -70,8 +70,42 @@ export async function getPublishedTasks(supabase: SupabaseClient) {
   return { lessons, tasks: ((fallback.data || []) as Task[]).filter(isStudentVisibleTask) };
 }
 
+// Group-scoped test list. A test is visible to a student only when it is linked to
+// that student's group via task_groups. No link -> not returned. Falls back to the
+// legacy lesson-group behavior if the task_groups table has not been migrated yet.
 export async function getPublishedTasksForStudent(supabase: SupabaseClient, groupId?: string | null) {
   if (!groupId) return { lessons: [] as Lesson[], tasks: [] as Task[] };
+  try {
+    const { data: links, error: linkError } = await supabase
+      .from("task_groups")
+      .select("task_id")
+      .eq("group_id", groupId);
+    if (linkError) throw linkError;
+    const taskIds = Array.from(new Set(((links || []) as Array<{ task_id: string }>).map((row) => row.task_id))).filter(Boolean);
+    if (!taskIds.length) return { lessons: [] as Lesson[], tasks: [] as Task[] };
+    const { data: tasksData, error: tasksError } = await supabase
+      .from("tasks")
+      .select("*,lessons(title,published,group_id,groups(name,slug))")
+      .in("id", taskIds)
+      .is("archived_at", null)
+      .order("order", { ascending: true });
+    if (tasksError) throw tasksError;
+    const tasks = ((tasksData || []) as Task[]).filter(isStudentVisibleTask);
+    const lessonIds = Array.from(new Set(tasks.map((task) => task.lesson_id).filter(Boolean)));
+    let lessons = [] as Lesson[];
+    if (lessonIds.length) {
+      const { data: lessonsData } = await supabase.from("lessons").select("*,groups(name,slug)").in("id", lessonIds);
+      lessons = (lessonsData || []) as Lesson[];
+    }
+    return { lessons, tasks };
+  } catch (error) {
+    if (isMissingTaskGroupsError(error)) return getPublishedTasksForStudentLegacy(supabase, groupId);
+    if (!isMissingGroupLessonColumnError(error) && !isMissingContentMetadataColumnError(error)) throw error;
+    return getPublishedTasks(supabase);
+  }
+}
+
+async function getPublishedTasksForStudentLegacy(supabase: SupabaseClient, groupId: string) {
   try {
     const { data: lessonsData, error: lessonError } = await supabase
       .from("lessons")
@@ -317,6 +351,32 @@ export async function getPublishedTaskById(supabase: SupabaseClient, taskId: str
 export async function getPublishedTaskByIdForStudent(supabase: SupabaseClient, taskId: string, groupId?: string | null) {
   if (!groupId) return null;
   try {
+    const { data: link, error: linkError } = await supabase
+      .from("task_groups")
+      .select("task_id")
+      .eq("task_id", taskId)
+      .eq("group_id", groupId)
+      .maybeSingle();
+    if (linkError) throw linkError;
+    if (!link) return null;
+    const { data: task, error } = await supabase
+      .from("tasks")
+      .select("*,lessons(title,published,group_id,groups(name,slug))")
+      .eq("id", taskId)
+      .maybeSingle();
+    if (error) throw error;
+    const typed = task as Task | null;
+    if (!typed || typed.archived_at || !isStudentVisibleTask(typed)) return null;
+    return typed;
+  } catch (error) {
+    if (isMissingTaskGroupsError(error)) return getPublishedTaskByIdForStudentLegacy(supabase, taskId, groupId);
+    if (!isMissingGroupLessonColumnError(error)) throw error;
+    return getPublishedTaskById(supabase, taskId);
+  }
+}
+
+async function getPublishedTaskByIdForStudentLegacy(supabase: SupabaseClient, taskId: string, groupId: string) {
+  try {
     const { data: task, error } = await supabase
       .from("tasks")
       .select("*,lessons(title,published,group_id,groups(name,slug))")
@@ -540,6 +600,53 @@ export async function updateTasksForLessonStatus(supabase: SupabaseClient, lesso
   if (!isMissingContentMetadataColumnError(error)) throw error;
 }
 
+// Returns a map of taskId -> assigned groupIds[], used to pre-check the admin panel.
+export async function getTaskGroupsMap(supabase: SupabaseClient, taskIds: string[]) {
+  const map = new Map<string, string[]>();
+  const ids = Array.from(new Set(taskIds.filter(Boolean)));
+  if (!ids.length) return map;
+  try {
+    const { data, error } = await supabase.from("task_groups").select("task_id,group_id").in("task_id", ids);
+    if (error) throw error;
+    for (const row of (data || []) as Array<{ task_id: string; group_id: string }>) {
+      const list = map.get(row.task_id) || [];
+      list.push(row.group_id);
+      map.set(row.task_id, list);
+    }
+    return map;
+  } catch (error) {
+    if (isMissingTaskGroupsError(error)) return map;
+    throw error;
+  }
+}
+
+// Replaces a test's group links with the given set. Assigning >=1 group publishes the
+// test's lesson (makes it live immediately); clearing all groups hides it from everyone.
+export async function setTaskGroups(supabase: SupabaseClient, taskId: string, groupIds: string[]) {
+  const unique = Array.from(new Set(groupIds.filter(Boolean)));
+  const { data: taskRow, error: taskError } = await supabase.from("tasks").select("id,lesson_id").eq("id", taskId).maybeSingle();
+  if (taskError) throw taskError;
+  const lessonId = (taskRow as { lesson_id?: string | null } | null)?.lesson_id || null;
+
+  const del = await supabase.from("task_groups").delete().eq("task_id", taskId);
+  if (del.error) {
+    if (isMissingTaskGroupsError(del.error)) throw new Error("task_groups jadvali topilmadi. Avval Supabase migratsiyasini qo'llang (20260708120000_task_groups.sql).");
+    throw del.error;
+  }
+  if (unique.length) {
+    const ins = await supabase.from("task_groups").insert(unique.map((group_id) => ({ task_id: taskId, group_id })));
+    if (ins.error) throw ins.error;
+  }
+
+  const live = unique.length > 0;
+  if (lessonId) {
+    await updateLesson(supabase, lessonId, { published: live });
+    await updateTasksForLessonStatus(supabase, lessonId, live ? "published" : "assigned");
+  } else {
+    await updateTask(supabase, taskId, { content_status: live ? "published" : "draft" });
+  }
+}
+
 export async function updateStudentGroup(supabase: SupabaseClient, studentId: string, groupId: string | null) {
   const { data, error } = await supabase
     .from("students")
@@ -663,6 +770,12 @@ function isMissingRelationOrColumnError(error: unknown) {
     message.includes("schema cache") ||
     message.includes("Could not find")
   );
+}
+
+function isMissingTaskGroupsError(error: unknown) {
+  const message = String((error as { message?: string })?.message || "");
+  const code = String((error as { code?: string })?.code || "");
+  return code === "42P01" || code === "PGRST205" || message.includes("task_groups");
 }
 
 function isMissingTableError(error: unknown) {

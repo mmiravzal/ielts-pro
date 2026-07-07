@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { Badge, Button, Card, EmptyState, Input, Select, StatCard, Table, Textarea } from "@ielts-pro/ui";
-import { createServerSupabaseClient, getAllGroups, getAllLessons, getAllTasks, parseTaskContent, type Task, type TaskContent } from "@ielts-pro/shared";
+import { createServerSupabaseClient, getAllGroups, getAllLessons, getAllTasks, getTaskGroupsMap, parseTaskContent, type Group, type Task, type TaskContent } from "@ielts-pro/shared";
 import { requireAdminSession } from "@/lib/session";
 import { AdminShell } from "../components/AdminShell";
-import { attachContentToLessonAction, createGroupAction, createLessonAction, toggleLessonPublishAction, updateLessonGroupAction } from "../actions/lms";
+import { attachContentToLessonAction, createGroupAction, createLessonAction, toggleLessonPublishAction, updateLessonGroupAction, updateTaskGroupsAction } from "../actions/lms";
 
 export default async function LessonsPage() {
   const admin = await requireAdminSession();
@@ -13,6 +13,7 @@ export default async function LessonsPage() {
     getAllLessons(supabase),
     getAllTasks(supabase)
   ]);
+  const taskGroupsMap = await getTaskGroupsMap(supabase, tasks.map((task) => task.id));
   const publishedLessons = lessons.filter((lesson) => lesson.published);
   const draftLessons = lessons.filter((lesson) => !lesson.published);
   const draftContent = tasks.filter((task) => !task.lessons?.published || task.content_status === "draft");
@@ -42,6 +43,7 @@ export default async function LessonsPage() {
 
       <div className="studio-tabs" aria-label="Content studio sections">
         <a href="#library">Library</a>
+        <a href="#assign-groups">Test → Groups</a>
         <a href="#groups">Groups & Lessons</a>
         <a href="#lesson-builder">Lesson Builder</a>
         <a href="#visibility">Visibility Matrix</a>
@@ -132,6 +134,47 @@ export default async function LessonsPage() {
               </tbody>
             </Table>
           ) : <EmptyState title="No content yet" body="Import an HTML test in Test Builder. It will appear here first, hidden from students." action={<Link className="btn btn-primary" href="/full-tests/new">Open Test Builder</Link>} />}
+        </Card>
+      </section>
+
+      <section className="studio-section" id="assign-groups">
+        <Card className="panel">
+          <div className="section-head">
+            <div>
+              <p className="eyebrow">Test → Groups</p>
+              <h2>Assign each test to groups</h2>
+              <p className="muted">Check the groups that should see a test, then Save. A test with no group checked is hidden from every student. Checking a group makes it visible to that group immediately.</p>
+            </div>
+          </div>
+          {tasks.length ? (
+            <div className="task-group-board">
+              {tasks.map((task) => {
+                const assigned = new Set(taskGroupsMap.get(task.id) || []);
+                const live = assigned.size > 0;
+                return (
+                  <form action={updateTaskGroupsAction} className="task-group-card" key={task.id}>
+                    <input type="hidden" name="task_id" value={task.id} />
+                    <div className="task-group-head">
+                      <div>
+                        <strong>{task.title}</strong>
+                        <p className="table-note">{labelFor(task.skill)} · {task.lessons?.title || "No lesson"}</p>
+                      </div>
+                      {live ? <Badge tone="success">Visible to {assigned.size} group(s)</Badge> : <Badge tone="warning">Hidden</Badge>}
+                    </div>
+                    <div className="task-group-checks">
+                      {groups.length ? groups.map((group: Group) => (
+                        <label className="task-group-check" key={group.id}>
+                          <input type="checkbox" name="group_ids" value={group.id} defaultChecked={assigned.has(group.id)} />
+                          <span>{group.name}</span>
+                        </label>
+                      )) : <span className="muted">Create a group first.</span>}
+                    </div>
+                    <Button variant="secondary">Save groups</Button>
+                  </form>
+                );
+              })}
+            </div>
+          ) : <EmptyState title="No tests yet" body="Import a test in Test Builder, then assign it to groups here." action={<Link className="btn btn-primary" href="/full-tests/new">Open Test Builder</Link>} />}
         </Card>
       </section>
 
