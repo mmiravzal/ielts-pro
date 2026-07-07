@@ -1,25 +1,35 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { buildRenderableQuestions, createServerSupabaseClient, getPublishedTaskByIdForStudent, getStudentById, gradeQuestions, parseTaskContent, submitAttempt, type TaskContent } from "@ielts-pro/shared";
+import { buildRenderableQuestions, createServerSupabaseClient, getPublishedTaskByIdForStudent, getStudentById, gradeQuestions, parseTaskContent, submitAttempt, type QuestionResult, type TaskContent } from "@ielts-pro/shared";
 import { requireStudentSession } from "@/lib/session";
 
-export async function submitTaskAttempt(formData: FormData) {
+export type SubmitResult = {
+  ok: boolean;
+  error?: string;
+  redirectUrl?: string;
+  submissionId?: string;
+  score?: number | null;
+  total?: number | null;
+  results?: QuestionResult[] | null;
+};
+
+export async function submitTaskAttempt(formData: FormData): Promise<SubmitResult> {
   const session = await requireStudentSession();
   const taskId = String(formData.get("taskId") || "");
   const supabase = createServerSupabaseClient();
   const student = await getStudentById(supabase, session.id);
   const task = await getPublishedTaskByIdForStudent(supabase, taskId, student?.group_id ?? session.group_id);
-  if (!task) redirect("/dashboard?error=unavailable");
+  if (!task) return { ok: false, error: "unavailable" };
 
   const content = parseTaskContent<TaskContent>(task.content, { questions: [] });
   const questions = buildRenderableQuestions(content, task);
 
   if (task.skill === "writing") {
     const answer = String(formData.get("writing_answer") || "").trim();
-    if (!answer) redirect(`/tests/${taskId}?error=empty`);
-    await submitAttempt(supabase, { studentId: session.id, taskId, answer });
-    redirect("/results?submitted=writing");
+    if (!answer) return { ok: false, error: "empty" };
+    const submission = await submitAttempt(supabase, { studentId: session.id, taskId, answer });
+    return { ok: true, redirectUrl: "/results?submitted=writing", submissionId: submission.id };
   }
 
   const answers: Record<string, unknown> = {};
@@ -39,17 +49,24 @@ export async function submitTaskAttempt(formData: FormData) {
     answers[String(index)] = String(formData.get(`q_${index}`) || "").trim();
   });
 
-  const { correct, total } = gradeQuestions(questions, answers);
+  const { correct, total, results } = gradeQuestions(questions, answers);
   const fullWritingAnswer = String(formData.get("full_writing_answer") || "").trim();
   if (task.skill === "full_test" && fullWritingAnswer) {
     answers.writing_response = fullWritingAnswer;
   }
-  await submitAttempt(supabase, {
+  const submission = await submitAttempt(supabase, {
     studentId: session.id,
     taskId,
     answer: JSON.stringify(answers),
     score: correct,
-    total
+    total,
+    results
   });
-  redirect("/results?submitted=test");
+  return {
+    ok: true,
+    submissionId: submission.id,
+    score: correct,
+    total,
+    results
+  };
 }

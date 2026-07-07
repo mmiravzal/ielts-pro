@@ -3,8 +3,8 @@ import { notFound } from "next/navigation";
 import { Badge, Button, Card, EmptyState, Input, QuestionNavigator } from "@ielts-pro/ui";
 import { buildRenderableQuestions, createServerSupabaseClient, getPublishedTaskByIdForStudent, getStudentById, getSubmissionForTask, getTaskAudioUrl, parseTaskContent, sanitizeTeacherHtml, type Question, type Task, type TaskContent } from "@ielts-pro/shared";
 import { requireStudentSession } from "@/lib/session";
-import { submitTaskAttempt } from "../../actions/attempts";
 import { HtmlTestViewer } from "../../components/HtmlTestViewer";
+import { StandardTestForm } from "../../components/StandardTestForm";
 import { StudentShell } from "../../components/StudentShell";
 import { WritingAnswerBox } from "../../components/WritingAnswerBox";
 import { TestTimer } from "./TestTimer";
@@ -55,48 +55,6 @@ export default async function TestPage({ params }: { params: Promise<{ taskId: s
     }
   };
 
-  function detectScore() {
-    var text = document.body.innerText;
-    var match = text.match(/(\\d+)\\s*\\/\\s*(\\d+)/);
-    if (!match) return null;
-    var score = parseInt(match[1], 10);
-    var total = parseInt(match[2], 10);
-    if (!total || score > total) return null;
-    return { score: score, total: total, answers: {}, results: collectResults() };
-  }
-
-  function collectResults() {
-    var results = [];
-    var els = document.querySelectorAll('[class*="question"],[class*="q-"],[class*="item"],[class*="row"],[class*="answer-group"],li');
-    var seen = new Set();
-    els.forEach(function(el, idx){
-      if (seen.has(el)) return;
-      seen.add(el);
-      var text = el.textContent.trim();
-      if (!text || text.length < 3) return;
-      var cls = el.className.toLowerCase();
-      var isCorrect = cls.includes('correct') || cls.includes('right') || cls.includes('pass');
-      var isWrong = cls.includes('incorrect') || cls.includes('wrong') || cls.includes('fail') || cls.includes('error');
-      if (isCorrect && isWrong) isCorrect = !isWrong;
-      var studentEl = el.querySelector('[class*="your"],[class*="student"],[class*="selected"],[class*="user"]');
-      var correctEl = el.querySelector('[class*="correct-answer"],[class*="right-answer"],[class*="expected"]');
-      var studentAnswer = studentEl ? studentEl.textContent.trim() : '';
-      var correctAnswer = correctEl ? correctEl.textContent.trim() : '';
-      if (!studentAnswer && !correctAnswer) return;
-      results.push({
-        questionIndex: results.length,
-        questionType: 'auto',
-        question: text.slice(0, 80),
-        studentAnswer: studentAnswer || '',
-        correctAnswer: correctAnswer || '',
-        isCorrect: isWrong ? false : isCorrect,
-        points: isCorrect ? 1 : 0,
-        maxPoints: 1
-      });
-    });
-    return results;
-  }
-
   function injectFallbackButton() {
     var btn = document.createElement('button');
     btn.textContent = 'Submit results';
@@ -112,17 +70,9 @@ export default async function TestPage({ params }: { params: Promise<{ taskId: s
     document.body.appendChild(btn);
   }
 
-  var observer = new MutationObserver(function(){
-    if (SUBMITTED) return;
-    var r = detectScore();
-    if (r) window.submitIeltsScore(r);
-  });
-  observer.observe(document.body, { childList: true, subtree: true, characterData: true });
-
   setTimeout(function(){
-    observer.disconnect();
     if (!SUBMITTED) injectFallbackButton();
-  }, 15000);
+  }, 60000);
 })();
 </script>`;
       htmlTest = rawHtml.includes("</body>")
@@ -181,8 +131,7 @@ export default async function TestPage({ params }: { params: Promise<{ taskId: s
             <Link href="/results" className="btn btn-primary">View results</Link>
           </Card>
         ) : (
-          <form action={submitTaskAttempt} className="exam-layout" id="test-answer-form" data-testid="test-answer-form">
-            <input type="hidden" name="taskId" value={task.id} />
+          <StandardTestForm taskId={task.id}>
             <div className="exam-status-strip">
               <span>{answerCount || (task.skill === "writing" ? 1 : 0)} {task.skill === "writing" ? "task" : "answers"}</span>
               <TestTimer minutes={timeLimitMinutes} />
@@ -248,7 +197,7 @@ export default async function TestPage({ params }: { params: Promise<{ taskId: s
               <QuestionNavigator count={answerCount} />
               <p className="muted">Use the numbers to jump through the task. Review your answers before submitting.</p>
             </aside>
-          </form>
+          </StandardTestForm>
         )}
       </main>
     </StudentShell>

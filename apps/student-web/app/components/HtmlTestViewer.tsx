@@ -9,6 +9,7 @@ type ResultModalData = {
   score: number;
   total: number;
   results: QuestionResult[];
+  timeTaken: number;
 };
 
 type Props = {
@@ -18,10 +19,18 @@ type Props = {
   skill: string;
 };
 
+function formatTime(seconds: number) {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
 export function HtmlTestViewer({ htmlTest, task, existingSubmission, skill }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [resultData, setResultData] = useState<ResultModalData | null>(null);
+  const [elapsed, setElapsed] = useState(0);
+  const startTimeRef = useRef(Date.now());
 
   const updateFullscreenState = useCallback(() => {
     setIsFullscreen(!!document.fullscreenElement);
@@ -33,12 +42,22 @@ export function HtmlTestViewer({ htmlTest, task, existingSubmission, skill }: Pr
   }, [updateFullscreenState]);
 
   useEffect(() => {
+    if (resultData) return;
+    const id = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - startTimeRef.current) / 1000));
+    }, 1000);
+    return () => clearInterval(id);
+  }, [resultData]);
+
+  useEffect(() => {
     function onMessage(e: MessageEvent) {
       if (e.data?.type === "ielts-submit-result") {
+        const timeTaken = Math.floor((Date.now() - startTimeRef.current) / 1000);
         setResultData({
           score: e.data.score,
           total: e.data.total,
-          results: e.data.results || []
+          results: e.data.results || [],
+          timeTaken
         });
       }
     }
@@ -75,6 +94,7 @@ export function HtmlTestViewer({ htmlTest, task, existingSubmission, skill }: Pr
             {existingSubmission?.score != null ? (
               <span className="submission-score">Score: {existingSubmission.score}/{existingSubmission.total ?? "?"}</span>
             ) : null}
+            {!resultData ? <span className="timer-display">{formatTime(elapsed)}</span> : null}
             <button type="button" className="btn btn-secondary" onClick={enterFullscreen}>
               Fullscreen
             </button>
@@ -120,6 +140,9 @@ export function HtmlTestViewer({ htmlTest, task, existingSubmission, skill }: Pr
                 {resultData.score} out of {resultData.total} correct
               </p>
               <p className="results-band-label">IELTS Band Score</p>
+              {resultData.timeTaken > 0 ? (
+                <p className="results-time">Time: {formatTime(resultData.timeTaken)}</p>
+              ) : null}
             </div>
 
             {resultData.results.length ? (

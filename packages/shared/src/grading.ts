@@ -1,4 +1,4 @@
-import type { Question, Task, TaskContent } from "./types.js";
+import type { Question, QuestionResult, Task, TaskContent } from "./types";
 
 export function parseTaskContent<T>(raw: string | null, fallback: T): T {
   if (!raw) return fallback;
@@ -14,16 +14,29 @@ export function countWords(value: string) {
 }
 
 export function gradeQuestions(questions: Question[], answers: Record<string, unknown>) {
+  const results: QuestionResult[] = [];
   let correct = 0;
   let total = 0;
 
   questions.forEach((q, index) => {
     const saved = answers[String(index)];
+
     if ((q.type === "matching" || q.type === "sentence_endings") && q.items?.length) {
       const savedMatch = isRecord(saved) ? saved : {};
       for (const [itemIndex, item] of (q.items || []).entries()) {
         total++;
-        if (isCorrectAnswer(savedMatch[String(itemIndex)], item.answer)) correct++;
+        const isCorrect = isCorrectAnswer(savedMatch[String(itemIndex)], item.answer);
+        if (isCorrect) correct++;
+        results.push({
+          questionIndex: results.length,
+          questionType: q.type,
+          question: item.label || "",
+          studentAnswer: savedMatch[String(itemIndex)] ?? "",
+          correctAnswer: item.answer ?? "",
+          isCorrect,
+          points: isCorrect ? 1 : 0,
+          maxPoints: 1,
+        });
       }
       return;
     }
@@ -32,7 +45,18 @@ export function gradeQuestions(questions: Question[], answers: Record<string, un
       const savedMatch = isRecord(saved) ? saved : {};
       for (const [itemIndex, item] of (q.items || []).entries()) {
         total++;
-        if (isCorrectAnswer(savedMatch[String(itemIndex)], item.answer)) correct++;
+        const isCorrect = isCorrectAnswer(savedMatch[String(itemIndex)], item.answer);
+        if (isCorrect) correct++;
+        results.push({
+          questionIndex: results.length,
+          questionType: q.type,
+          question: item.label || "",
+          studentAnswer: savedMatch[String(itemIndex)] ?? "",
+          correctAnswer: item.answer ?? "",
+          isCorrect,
+          points: isCorrect ? 1 : 0,
+          maxPoints: 1,
+        });
       }
       return;
     }
@@ -44,18 +68,41 @@ export function gradeQuestions(questions: Question[], answers: Record<string, un
       expected.forEach((letter) => {
         if (actual.includes(letter)) correct++;
       });
+      results.push({
+        questionIndex: results.length,
+        questionType: q.type,
+        question: q.question ?? "",
+        studentAnswer: actual,
+        correctAnswer: expected,
+        isCorrect: expected.every((l) => actual.includes(l)),
+        points: expected.filter((l) => actual.includes(l)).length,
+        maxPoints: expected.length,
+      });
       return;
     }
 
     total++;
+    let isCorrect = false;
     if (["gap_fill", "short_answer", "matching", "sentence_endings"].includes(q.type)) {
-      if (isCorrectAnswer(saved, q.answer)) correct++;
+      isCorrect = isCorrectAnswer(saved, q.answer);
+      if (isCorrect) correct++;
     } else if (["tfng", "ynng", "mcq"].includes(q.type)) {
-      if (isCorrectAnswer(saved, q.answer)) correct++;
+      isCorrect = isCorrectAnswer(saved, q.answer);
+      if (isCorrect) correct++;
     }
+    results.push({
+      questionIndex: results.length,
+      questionType: q.type,
+      question: q.question ?? "",
+      studentAnswer: saved ?? "",
+      correctAnswer: q.answer ?? "",
+      isCorrect,
+      points: isCorrect ? 1 : 0,
+      maxPoints: 1,
+    });
   });
 
-  return { correct, total };
+  return { correct, total, results };
 }
 
 export function flattenQuestions(content: TaskContent): Question[] {

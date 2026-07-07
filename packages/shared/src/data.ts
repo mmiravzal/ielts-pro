@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { defaultPublicSiteSettings } from "./site-content.js";
-import type { Group, Lesson, NewTaskInput, PublicSiteSettings, QuestionResult, Student, StudentDeviceSession, Submission, Task } from "./types.js";
+import { defaultPublicSiteSettings } from "./site-content";
+import type { Group, Lesson, NewTaskInput, PublicSiteSettings, QuestionResult, Student, StudentDeviceSession, Submission, Task } from "./types";
 
 const DEFAULT_GROUPS = [
   { name: "Introduction group", slug: "introduction", order: 1 },

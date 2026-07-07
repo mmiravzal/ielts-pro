@@ -5,6 +5,7 @@ import { StudentShell } from "../components/StudentShell";
 import {
   completionState,
   groupTasksByLesson,
+  isAutoTestLesson,
   labelForSkill,
   taskSummary,
   toneForSkill
@@ -20,7 +21,8 @@ export default async function LessonsPage() {
     getStudentSubmissions(supabase, session.id)
   ]);
   const progress = completionState(tasks, submissions);
-  const lessonGroups = groupTasksByLesson(lessons, tasks);
+  // Yuklangan testlar Practice'da (skill bo'yicha) ko'rinadi — Lessons faqat haqiqiy darslarni ko'rsatadi.
+  const lessonGroups = groupTasksByLesson(lessons, tasks).filter(({ lesson, tasks: lessonTasks }) => !isAutoTestLesson(lesson, lessonTasks));
 
   return (
     <StudentShell

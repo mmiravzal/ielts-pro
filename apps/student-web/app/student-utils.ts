@@ -148,6 +148,27 @@ export function submissionsForSkill(submissions: Submission[], skill: StudentSki
   return submissions.filter((submission) => normaliseSkill(submission.tasks?.skill) === wanted);
 }
 
+// Upload/import oqimida avtomatik yaratilgan darslarning belgilangan tavsiflari.
+const AUTO_TEST_LESSON_DESCRIPTIONS = [
+  "Interactive HTML test uploaded by the teacher.",
+  "Imported content library item. Attach it to a lesson in Content Studio before publishing."
+];
+
+// O'qituvchi yuklagan/import qilgan test (HTML) — dars emas, practice testi sifatida qaraladi.
+export function isUploadedTest(task: Task) {
+  return task.task_type === "html_test" || task.source_type === "html" || Boolean(task.html_path);
+}
+
+// Yuklangan test yoki import kontenti uchun avtomatik yaratilgan "dars" — Lessons'da ko'rsatilmaydi,
+// u faqat Practice (skill bo'yicha) da chiqadi. DB ustunlari yo'q bo'lsa ham title/description orqali aniqlanadi.
+export function isAutoTestLesson(lesson: Lesson, lessonTasks: Task[]) {
+  const title = String(lesson.title || "");
+  const description = String(lesson.description || "");
+  if (title.startsWith("[Draft content]")) return true;
+  if (AUTO_TEST_LESSON_DESCRIPTIONS.includes(description)) return true;
+  return lessonTasks.length > 0 && lessonTasks.every(isUploadedTest);
+}
+
 export function groupTasksByLesson(lessons: Lesson[], tasks: Task[]) {
   const groups = lessons.map((lesson) => ({
     lesson,
@@ -169,6 +190,44 @@ export function groupTasksByLesson(lessons: Lesson[], tasks: Task[]) {
     });
   }
   return groups.filter((group) => group.tasks.length || group.lesson.id !== "unassigned");
+}
+
+const BAND_SKILLS: Array<{ key: StudentSkillKey; label: string }> = [
+  { key: "reading", label: "Reading" },
+  { key: "listening", label: "Listening" },
+  { key: "speaking", label: "Speaking" },
+  { key: "writing", label: "Writing" }
+];
+
+function averageOf(values: number[]) {
+  if (!values.length) return null;
+  const avg = values.reduce((sum, v) => sum + v, 0) / values.length;
+  return Number(avg.toFixed(1));
+}
+
+// Reviewed submission ball'laridan skill bo'yicha o'rtacha. Data yo'q bo'lsa null.
+export function scoresBySkill(submissions: Submission[]) {
+  return BAND_SKILLS.map(({ key, label }) => {
+    const scored = submissions
+      .filter((s) => normaliseSkill(s.tasks?.skill) === key && s.score != null)
+      .map((s) => Number(s.score));
+    return { key, label, value: averageOf(scored) };
+  });
+}
+
+// Umumiy o'rtacha ball (barcha reviewed submission'lardan). Katta raqam uchun.
+export function overallScore(submissions: Submission[]) {
+  const scored = submissions.filter((s) => s.score != null).map((s) => Number(s.score));
+  return averageOf(scored);
+}
+
+// Listening reviewed ball'lari vaqt bo'yicha (chart uchun). Eng eskisidan yangisiga.
+export function listeningSeries(submissions: Submission[]) {
+  return submissions
+    .filter((s) => normaliseSkill(s.tasks?.skill) === "listening" && s.score != null)
+    .slice()
+    .sort((a, b) => new Date(a.submitted_at || 0).getTime() - new Date(b.submitted_at || 0).getTime())
+    .map((s) => Number(s.score));
 }
 
 export function trendLabel(submissions: Submission[]) {

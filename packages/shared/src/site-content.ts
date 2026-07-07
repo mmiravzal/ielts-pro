@@ -1,4 +1,4 @@
-import type { PublicSiteSettings } from "./types.js";
+import type { PublicSiteSettings } from "./types";
 
 export const siteContent = {
   brand: "IELTS Pro",

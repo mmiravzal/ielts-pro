@@ -1,137 +1,54 @@
 import Link from "next/link";
-import type { CSSProperties } from "react";
-import { createServerSupabaseClient, getPublishedTasksForStudent, getStudentById, getStudentSubmissions } from "@ielts-pro/shared";
+import type { ReactNode } from "react";
+import { createServerSupabaseClient, getStudentById } from "@ielts-pro/shared";
 import { requireStudentSession } from "@/lib/session";
 import { StudentShell } from "../components/StudentShell";
-import {
-  completionState,
-  labelForSkill,
-  nextTask,
-  progressBySkill,
-  studentSkillCards,
-  taskSummary,
-  tasksForSkill,
-  toneForSkill
-} from "../student-utils";
+
+const S = { fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" } as const;
+
+const CARDS: Array<{ key: string; label: string; href: string; tone: string; meta: [string, string]; icon: ReactNode }> = [
+  {
+    key: "listening", label: "Listening", href: "/practice/listening", tone: "green", meta: ["30 mins", "40 questions"],
+    icon: (<><path d="M4 13a8 8 0 0116 0" {...S} /><rect x="2.5" y="13" width="4" height="7" rx="2" {...S} /><rect x="17.5" y="13" width="4" height="7" rx="2" {...S} /></>)
+  },
+  {
+    key: "reading", label: "Reading", href: "/practice/reading", tone: "blue", meta: ["60 mins", "40 questions"],
+    icon: (<><path d="M4 5a2 2 0 012-2h13v16H6a2 2 0 00-2 2V5z" {...S} /><path d="M19 3v16" {...S} /></>)
+  },
+  {
+    key: "speaking", label: "Speaking", href: "/speaking", tone: "amber", meta: ["11-14 mins", "3 Parts"],
+    icon: (<><circle cx="9" cy="8" r="3.2" {...S} /><path d="M3.5 20a5.5 5.5 0 0111 0" {...S} /><path d="M17 7a4 4 0 010 8" {...S} /></>)
+  },
+  {
+    key: "writing", label: "Writing", href: "/practice/writing", tone: "red", meta: ["60 mins", "2 Tasks"],
+    icon: (<><path d="M12 20h9" {...S} /><path d="M16.5 4.5a2.1 2.1 0 013 3L8 19l-4 1 1-4 11.5-11.5z" {...S} /></>)
+  }
+];
 
 export default async function PracticePage() {
   const session = await requireStudentSession();
   const supabase = createServerSupabaseClient();
   const student = await getStudentById(supabase, session.id);
-  const currentGroupId = student?.group_id ?? session.group_id;
-  const [{ lessons, tasks }, submissions] = await Promise.all([
-    getPublishedTasksForStudent(supabase, currentGroupId),
-    getStudentSubmissions(supabase, session.id)
-  ]);
-  const progress = completionState(tasks, submissions);
-  const next = nextTask(tasks, submissions);
-  const skillProgress = progressBySkill(tasks, submissions);
 
   return (
-    <StudentShell
-      name={session.name}
-      groupName={student?.groups?.name}
-      sectionLabel="Practice"
-      sectionDescription="Choose a skill and open tests in a focused exam tab"
-    >
-      <main className="student-page student-practice-page">
-        <section className="student-hero-panel">
-          <div>
-            <p className="student-kicker">Choose your skill</p>
-            <h1>IELTS practice built around your teacher plan.</h1>
-            <p>
-              {student?.groups?.name
-                ? `Showing work assigned to ${student.groups.name}.`
-                : "No group is assigned yet. Ask your teacher to connect your Student Access ID to a group."}
-            </p>
-            <div className="student-action-row">
-              {next ? (
-                <Link className="student-primary-button" href={`/tests/${next.id}`} target="_blank" rel="noopener noreferrer">
-                  Continue next task
-                </Link>
-              ) : (
-                <Link className="student-primary-button" href="/lessons">Open lessons</Link>
-              )}
-              <Link className="student-secondary-button" href="/results">Result history</Link>
-            </div>
-          </div>
-          <div className="student-hero-progress">
-            <span>Course progress</span>
-            <strong>{progress.percent}%</strong>
-            <div className="student-progress-bar" style={{ "--student-progress": `${progress.percent}%` } as CSSProperties} />
-            <small>{progress.completed}/{tasks.length} tasks submitted</small>
-          </div>
-        </section>
-
-        <section className="student-skill-grid" aria-label="Choose an IELTS skill">
-          {studentSkillCards.map((card) => {
-            const data = skillProgress.find((skill) => skill.key === card.key);
-            const available = tasksForSkill(tasks, card.key).length;
-            return (
-              <Link className={`student-skill-card tone-${toneForSkill(card.key)}`} href={card.href} key={card.key}>
-                <span className={`student-skill-icon tone-${toneForSkill(card.key)}`}>{card.mark}</span>
-                <div>
-                  <h2>{card.label}</h2>
-                  <p>{card.duration} · {data?.total || available} task{(data?.total || available) === 1 ? "" : "s"}</p>
-                </div>
-                <small>{card.detail}</small>
-                <em>{data?.done || 0}/{data?.total || available} completed</em>
-              </Link>
-            );
-          })}
-        </section>
-
-        <section className="student-stat-grid" aria-label="Practice summary">
-          <MetricCard label="Lessons" value={lessons.length} note="published by teacher" />
-          <MetricCard label="Open Tasks" value={progress.open} note="available now" />
-          <MetricCard label="Attempts" value={submissions.length} note="submitted answers" />
-          <MetricCard label="Feedback" value={submissions.filter((submission) => submission.feedback).length} note="teacher notes" />
-        </section>
-
-        <section className="student-panel">
-          <div className="student-section-header">
-            <div>
-              <p className="student-kicker">Latest work</p>
-              <h2>Published practice</h2>
-            </div>
-            <Link href="/lessons">View by lesson</Link>
-          </div>
-          <div className="student-task-list">
-            {tasks.slice(0, 10).map((task) => {
-              const submitted = progress.completedIds.has(task.id);
-              return (
-                <article className="student-task-row" key={task.id}>
-                  <span className={`student-skill-icon tone-${toneForSkill(task.skill)}`}>{labelForSkill(task.skill).slice(0, 1)}</span>
-                  <div>
-                    <strong>{task.title}</strong>
-                    <small>{taskSummary(task, lessons)}</small>
-                  </div>
-                  <span className={`student-status-pill ${submitted ? "is-done" : ""}`}>{submitted ? "Submitted" : "Open"}</span>
-                  <Link className="student-small-button" href={`/tests/${task.id}`} target="_blank" rel="noopener noreferrer">
-                    {submitted ? "Review" : "Start"}
-                  </Link>
-                </article>
-              );
-            })}
-            {!tasks.length ? (
-              <div className="student-empty-card">
-                <h3>No practice yet</h3>
-                <p>{currentGroupId ? "Your teacher has not published IELTS work for this group yet." : "Your Student Access ID is not assigned to a group yet."}</p>
-              </div>
-            ) : null}
-          </div>
+    <StudentShell name={session.name} groupName={student?.groups?.name || "Group pending"}>
+      <main className="student-page student-practice">
+        <section className="student-practice-grid" aria-label="Choose an IELTS skill">
+          {CARDS.map((card) => (
+            <Link className={`student-practice-card tone-${card.tone}`} href={card.href} key={card.key}>
+              <span className="student-practice-icon">
+                <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true">{card.icon}</svg>
+              </span>
+              <h2>{card.label}</h2>
+              <p className="student-practice-meta">
+                <span>{card.meta[0]}</span>
+                <em />
+                <span>{card.meta[1]}</span>
+              </p>
+            </Link>
+          ))}
         </section>
       </main>
     </StudentShell>
-  );
-}
-
-function MetricCard({ label, value, note }: { label: string; value: string | number; note: string }) {
-  return (
-    <article className="student-metric-card">
-      <span>{label}</span>
-      <strong>{value}</strong>
-      <small>{note}</small>
-    </article>
   );
 }
