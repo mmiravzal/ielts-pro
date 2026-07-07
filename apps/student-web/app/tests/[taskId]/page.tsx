@@ -4,6 +4,7 @@ import { Badge, Button, Card, EmptyState, Input, QuestionNavigator } from "@ielt
 import { buildRenderableQuestions, createServerSupabaseClient, getPublishedTaskByIdForStudent, getStudentById, getSubmissionForTask, getTaskAudioUrl, parseTaskContent, sanitizeTeacherHtml, type Question, type Task, type TaskContent } from "@ielts-pro/shared";
 import { requireStudentSession } from "@/lib/session";
 import { submitTaskAttempt } from "../../actions/attempts";
+import { HtmlTestViewer } from "../../components/HtmlTestViewer";
 import { StudentShell } from "../../components/StudentShell";
 import { WritingAnswerBox } from "../../components/WritingAnswerBox";
 import { TestTimer } from "./TestTimer";
@@ -30,8 +31,12 @@ export default async function TestPage({ params }: { params: Promise<{ taskId: s
       const bridge = `<script>
 (function(){
   var TASK_ID = ${JSON.stringify(task.id)};
+  var SUBMITTED = false;
+
   window.submitIeltsScore = async function(result){
+    if (SUBMITTED) return;
     result = result || {};
+    SUBMITTED = true;
     try {
       var res = await fetch('/api/html-attempts', {
         method: 'POST',
@@ -40,13 +45,84 @@ export default async function TestPage({ params }: { params: Promise<{ taskId: s
         body: JSON.stringify({ taskId: TASK_ID, score: result.score, total: result.total, answers: result.answers || null, results: result.results || null })
       });
       var json = await res.json();
-      if (!json || !json.ok) console.error('submitIeltsScore rejected', json);
+      if (!json || !json.ok) { console.error('submitIeltsScore rejected', json); SUBMITTED = false; return json; }
+      try { window.parent.postMessage({ type: 'ielts-submit-result', score: json.score, total: json.total, results: result.results || null }, '*'); } catch(e) {}
       return json;
     } catch (err) {
       console.error('submitIeltsScore failed', err);
+      SUBMITTED = false;
       return { ok: false };
     }
   };
+
+  function detectScore() {
+    var text = document.body.innerText;
+    var match = text.match(/(\\d+)\\s*\\/\\s*(\\d+)/);
+    if (!match) return null;
+    var score = parseInt(match[1], 10);
+    var total = parseInt(match[2], 10);
+    if (!total || score > total) return null;
+    return { score: score, total: total, answers: {}, results: collectResults() };
+  }
+
+  function collectResults() {
+    var results = [];
+    var els = document.querySelectorAll('[class*="question"],[class*="q-"],[class*="item"],[class*="row"],[class*="answer-group"],li');
+    var seen = new Set();
+    els.forEach(function(el, idx){
+      if (seen.has(el)) return;
+      seen.add(el);
+      var text = el.textContent.trim();
+      if (!text || text.length < 3) return;
+      var cls = el.className.toLowerCase();
+      var isCorrect = cls.includes('correct') || cls.includes('right') || cls.includes('pass');
+      var isWrong = cls.includes('incorrect') || cls.includes('wrong') || cls.includes('fail') || cls.includes('error');
+      if (isCorrect && isWrong) isCorrect = !isWrong;
+      var studentEl = el.querySelector('[class*="your"],[class*="student"],[class*="selected"],[class*="user"]');
+      var correctEl = el.querySelector('[class*="correct-answer"],[class*="right-answer"],[class*="expected"]');
+      var studentAnswer = studentEl ? studentEl.textContent.trim() : '';
+      var correctAnswer = correctEl ? correctEl.textContent.trim() : '';
+      if (!studentAnswer && !correctAnswer) return;
+      results.push({
+        questionIndex: results.length,
+        questionType: 'auto',
+        question: text.slice(0, 80),
+        studentAnswer: studentAnswer || '',
+        correctAnswer: correctAnswer || '',
+        isCorrect: isWrong ? false : isCorrect,
+        points: isCorrect ? 1 : 0,
+        maxPoints: 1
+      });
+    });
+    return results;
+  }
+
+  function injectFallbackButton() {
+    var btn = document.createElement('button');
+    btn.textContent = 'Submit results';
+    btn.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:99999;padding:12px 24px;background:#1d4ed8;color:#fff;border:none;border-radius:8px;font-size:16px;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.2)';
+    btn.onclick = function(){
+      var text = prompt('Enter your score (e.g. 7/10):');
+      if (!text) return;
+      var m = text.match(/(\\d+)\\s*\\/\\s*(\\d+)/);
+      if (!m) return alert('Format: score/total (e.g. 7/10)');
+      window.submitIeltsScore({ score: Number(m[1]), total: Number(m[2]), answers: {}, results: [] });
+      btn.remove();
+    };
+    document.body.appendChild(btn);
+  }
+
+  var observer = new MutationObserver(function(){
+    if (SUBMITTED) return;
+    var r = detectScore();
+    if (r) window.submitIeltsScore(r);
+  });
+  observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+
+  setTimeout(function(){
+    observer.disconnect();
+    if (!SUBMITTED) injectFallbackButton();
+  }, 15000);
 })();
 </script>`;
       htmlTest = rawHtml.includes("</body>")
@@ -57,34 +133,16 @@ export default async function TestPage({ params }: { params: Promise<{ taskId: s
     return (
       <StudentShell name={session.name}>
         <main className="test-page html-test">
-          <div className="exam-topline">
-            <div>
-              <Badge tone={toneFor(task.skill)}>{labelFor(task.skill)}</Badge>
-            </div>
-            <div className="topline-actions">
-              {existingSubmission?.score != null ? (
-                <span className="submission-score">Score: {existingSubmission.score}/{existingSubmission.total ?? "?"}</span>
-              ) : null}
-              <Link href="/dashboard" className="btn btn-secondary">Exit test</Link>
-            </div>
-          </div>
-          {existingSubmission ? (
-            <Card className="submitted-panel" style={{ marginBottom: 12 }}>
-              <div>
-                <Badge tone="success">Submitted</Badge>
-                <span>Your result is saved.</span>
-              </div>
-            </Card>
-          ) : null}
           {!htmlTest ? (
             <div className="html-test-viewer-status">
               <p className="form-error">Test file is missing. Ask your teacher to re-upload it.</p>
             </div>
           ) : (
-            <iframe
-              className="html-test-iframe"
-              srcDoc={htmlTest}
-              title={task.title}
+            <HtmlTestViewer
+              htmlTest={htmlTest}
+              task={task}
+              existingSubmission={existingSubmission}
+              skill={task.skill}
             />
           )}
         </main>

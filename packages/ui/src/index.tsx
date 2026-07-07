@@ -1,7 +1,7 @@
 import type { ComponentPropsWithoutRef, ReactNode } from "react";
 
 type Variant = "primary" | "secondary" | "ghost" | "danger";
-type BadgeTone = "neutral" | "reading" | "listening" | "writing" | "speaking" | "full" | "success" | "warning";
+export type BadgeTone = "neutral" | "reading" | "listening" | "writing" | "speaking" | "full" | "success" | "warning";
 
 export function Button({
   variant = "primary",

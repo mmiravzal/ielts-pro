@@ -52,7 +52,7 @@ export default async function ResultsPage() {
           </div>
           <div className="student-card-list">
             {submissions.map((submission) => (
-              <article className="student-result-row" key={submission.id}>
+              <Link href={`/results/${submission.id}`} key={submission.id} className="student-result-row">
                 <span className={`student-skill-icon tone-${toneForSkill(submission.tasks?.skill)}`}>{labelForSkill(submission.tasks?.skill).slice(0, 1)}</span>
                 <div>
                   <strong>{submission.tasks?.title || "Practice task"}</strong>
@@ -60,7 +60,7 @@ export default async function ResultsPage() {
                   {submission.feedback ? <p>{submission.feedback}</p> : null}
                 </div>
                 <em>{scoreLabel(submission)}</em>
-              </article>
+              </Link>
             ))}
             {!submissions.length ? (
               <div className="student-empty-card">
