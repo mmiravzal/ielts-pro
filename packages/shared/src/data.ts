@@ -242,7 +242,7 @@ export async function validateStudentDeviceSession(
   if (!session || session.is_active === false || session.revoked_at) return false;
   const student = session.students as Student | null | undefined;
   if (student?.is_active === false || student?.access_status === "closed") return false;
-  await supabase
+  void supabase
     .from("student_device_sessions")
     .update({ last_seen_at: new Date().toISOString(), user_agent: input.userAgent ?? session.user_agent })
     .eq("id", input.deviceSessionId);

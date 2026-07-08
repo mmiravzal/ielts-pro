@@ -39,13 +39,7 @@
 html { scroll-behavior: smooth; }
 body {
   margin: 0;
-  background:
-    linear-gradient(rgba(125, 211, 252, .06) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(125, 211, 252, .06) 1px, transparent 1px),
-    radial-gradient(circle at 18% 0%, rgba(34, 167, 242, .3), transparent 34%),
-    radial-gradient(circle at 90% 12%, rgba(124, 58, 237, .2), transparent 32%),
-    linear-gradient(180deg, #0d2138 0%, #102843 48%, #111e33 100%);
-  background-size: 44px 44px, 44px 44px, auto, auto, auto;
+  background: linear-gradient(180deg, #0d2138 0%, #102843 48%, #111e33 100%);
   color: var(--ink);
   font-family: var(--font-inter), ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }

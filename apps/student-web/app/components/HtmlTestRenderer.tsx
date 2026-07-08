@@ -13,7 +13,7 @@ type ResultModalData = {
 };
 
 type Props = {
-  rawHtml: string;
+  downloadUrl: string | null;
   task: Task;
   existingSubmission: Submission | null;
   skill: string;
@@ -81,16 +81,40 @@ function labelFor(skill: string) {
   return skill;
 }
 
-export function HtmlTestRenderer({ rawHtml, task, existingSubmission, skill }: Props) {
+export function HtmlTestRenderer({ downloadUrl, task, existingSubmission, skill }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [resultData, setResultData] = useState<ResultModalData | null>(null);
   const [elapsed, setElapsed] = useState(0);
+  const [rawHtml, setRawHtml] = useState<string | null>(null);
+  const [fetchError, setFetchError] = useState(false);
   const startTimeRef = useRef(Date.now());
   const injectedRef = useRef(false);
 
-  const parts = useMemo(() => extractHtmlParts(rawHtml), [rawHtml]);
+  useEffect(() => {
+    if (!downloadUrl) {
+      setFetchError(true);
+      return;
+    }
+    let active = true;
+    fetch(downloadUrl)
+      .then((res) => (res.ok ? res.text() : null))
+      .then((html) => {
+        if (!active) return;
+        if (html) setRawHtml(html);
+        else setFetchError(true);
+      })
+      .catch(() => {
+        if (active) setFetchError(true);
+      });
+    return () => { active = false; };
+  }, [downloadUrl]);
+
+  const parts = useMemo(() => {
+    if (!rawHtml) return { bodyHtml: "", styles: [], scripts: [] };
+    return extractHtmlParts(rawHtml);
+  }, [rawHtml]);
 
   const updateFullscreenState = useCallback(() => {
     setIsFullscreen(!!document.fullscreenElement);
@@ -338,7 +362,17 @@ export function HtmlTestRenderer({ rawHtml, task, existingSubmission, skill }: P
         </Card>
       ) : null}
 
-      <div id="html-test-content" ref={contentRef} />
+      {fetchError ? (
+        <div className="html-test-viewer-status">
+          <p className="form-error">Test file is missing. Ask your teacher to re-upload it.</p>
+        </div>
+      ) : !rawHtml ? (
+        <div className="html-test-viewer-status">
+          <div className="skeleton-block" style={{ height: 400 }} />
+        </div>
+      ) : (
+        <div id="html-test-content" ref={contentRef} />
+      )}
 
       {isFullscreen ? (
         <div className="fullscreen-controls">

@@ -21,28 +21,24 @@ export default async function TestPage({ params }: { params: Promise<{ taskId: s
   ]);
   if (!task) notFound();
 
+  let downloadUrl: string | null = null;
   if (task.html_path) {
-    const download = await supabase.storage.from("html-tests").download(task.html_path);
-    let rawHtml: string | null = null;
-    if (download.data) {
-      rawHtml = await download.data.text();
-    }
+    const { data: signedData } = await supabase.storage
+      .from("html-tests")
+      .createSignedUrl(task.html_path, 3600);
+    downloadUrl = signedData?.signedUrl ?? null;
+  }
 
+  if (task.html_path) {
     return (
       <StudentShell name={session.name}>
         <main className="test-page html-test">
-          {!rawHtml ? (
-            <div className="html-test-viewer-status">
-              <p className="form-error">Test file is missing. Ask your teacher to re-upload it.</p>
-            </div>
-          ) : (
-            <HtmlTestRenderer
-              rawHtml={rawHtml}
-              task={task}
-              existingSubmission={existingSubmission}
-              skill={task.skill}
-            />
-          )}
+          <HtmlTestRenderer
+            downloadUrl={downloadUrl}
+            task={task}
+            existingSubmission={existingSubmission}
+            skill={task.skill}
+          />
         </main>
       </StudentShell>
     );
