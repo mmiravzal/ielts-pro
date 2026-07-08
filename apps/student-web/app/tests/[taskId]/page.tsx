@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { Badge, Button, Card, EmptyState, Input, QuestionNavigator } from "@ielts-pro/ui";
 import { buildRenderableQuestions, createServerSupabaseClient, getPublishedTaskByIdForStudent, getStudentById, getSubmissionForTask, getTaskAudioUrl, parseTaskContent, sanitizeTeacherHtml, type Question, type Task, type TaskContent } from "@ielts-pro/shared";
 import { requireStudentSession } from "@/lib/session";
+import { isUuid } from "@/lib/ids";
 import { HtmlTestRenderer } from "../../components/HtmlTestRenderer";
 import { StandardTestForm } from "../../components/StandardTestForm";
 import { StudentShell } from "../../components/StudentShell";
@@ -11,6 +12,8 @@ import { TestTimer } from "./TestTimer";
 
 export default async function TestPage({ params }: { params: Promise<{ taskId: string }> }) {
   const { taskId } = await params;
+  if (!isUuid(taskId)) notFound();
+
   const session = await requireStudentSession();
   const supabase = createServerSupabaseClient();
   const student = await getStudentById(supabase, session.id);
@@ -31,7 +34,7 @@ export default async function TestPage({ params }: { params: Promise<{ taskId: s
 
   if (task.html_path) {
     return (
-      <StudentShell name={session.name}>
+      <StudentShell name={session.name} groupName={student?.groups?.name} variant="exam">
         <main className="test-page html-test">
           <HtmlTestRenderer
             downloadUrl={downloadUrl}

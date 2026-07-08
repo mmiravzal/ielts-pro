@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServerSupabaseClient, getPublishedTaskByIdForStudent, submitAttempt, type QuestionResult } from "@ielts-pro/shared";
+import { isUuid } from "@/lib/ids";
 import { requireStudentSession } from "@/lib/session";
 
 export async function GET() {
@@ -19,6 +20,7 @@ export async function POST(request: Request) {
 
     const taskId = String(body.taskId || "");
     if (!taskId) return NextResponse.json({ ok: false, error: "Missing taskId." }, { status: 400 });
+    if (!isUuid(taskId)) return NextResponse.json({ ok: false, error: "Invalid taskId." }, { status: 400 });
 
     const supabase = createServerSupabaseClient();
     const groupId = session.group_id;

@@ -22,26 +22,21 @@ function StudentLoginForm() {
   return (
     <main className="student-login-page">
       <section className="student-login-form-panel" aria-labelledby="student-login-title">
-        <Link className="student-login-back" href="/" aria-label="Back">
-          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
-            <path d="M20 12H5M11 18l-6-6 6-6" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </Link>
-
+        <Link className="student-login-back" href="/">Back</Link>
         <div className="student-login-copy">
+          <p>Student portal</p>
           <h1 id="student-login-title">Login</h1>
-          <span>Login <em>via your personal Id</em></span>
+          <span>Login via your personal ID</span>
         </div>
 
         <form action={action} className="student-login-form">
-          <p className="student-login-role">Student</p>
           <label className="student-line-field">
-            <span className="sr-only">Full Name</span>
+            <span>Full Name</span>
             <input name="name" autoComplete="name" placeholder="Full Name" required />
           </label>
           <label className="student-line-field">
-            <span className="sr-only">Personal ID</span>
-            <input name="code" inputMode="numeric" autoComplete="one-time-code" placeholder="Personal ID" required />
+            <span>Personal ID</span>
+            <input name="code" inputMode="numeric" autoComplete="one-time-code" placeholder="Student Access ID" required />
           </label>
           {sessionError === "session-revoked" ? <p className="student-login-error">This device session was revoked or your access was closed. Contact your teacher.</p> : null}
           {sessionError === "session-expired" ? <p className="student-login-error">Your session expired. Enter your Student Access ID again.</p> : null}
@@ -50,18 +45,23 @@ function StudentLoginForm() {
           <button className="student-login-next" disabled={pending}>{pending ? "Checking..." : "Next"}</button>
         </form>
 
-        <p className="student-login-help">You can find your ID from your teacher !</p>
-        <Link className="student-login-admin" href={adminUrl}>
-          Admin
-          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-            <path d="M5 12h14M13 6l6 6-6 6" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </Link>
+        <p className="student-login-help">You can find your ID from your teacher.</p>
+        <Link className="student-login-admin" href={adminUrl}>Admin</Link>
       </section>
 
-      <section className="student-login-visual" aria-label="IELTS Pro">
-        <div className="student-login-badge">
-          IELTS <span>PRO</span>
+      <section className="student-login-visual" aria-label="IELTS Pro visual preview">
+        <div className="student-login-logo">IELTS <span>Pro</span></div>
+        <div className="student-login-visual-card">
+          <div>
+            <p>Personal LMS</p>
+            <h2>Practice IELTS with clear progress.</h2>
+          </div>
+          <div className="student-login-skill-grid" aria-hidden="true">
+            <span>Listening</span>
+            <span>Reading</span>
+            <span>Writing</span>
+            <span>Mock</span>
+          </div>
         </div>
       </section>
     </main>

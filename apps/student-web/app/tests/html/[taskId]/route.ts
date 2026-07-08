@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServerSupabaseClient, getPublishedTaskByIdForStudent, getStudentById } from "@ielts-pro/shared";
+import { isUuid } from "@/lib/ids";
 import { requireStudentSession } from "@/lib/session";
 
 // Serves an uploaded interactive HTML test from private storage on our own
@@ -7,6 +8,10 @@ import { requireStudentSession } from "@/lib/session";
 // student's HTTP-only session cookie (no anon key or secrets in the page).
 export async function GET(_request: Request, { params }: { params: Promise<{ taskId: string }> }) {
   const { taskId } = await params;
+  if (!isUuid(taskId)) {
+    return new NextResponse("This test is not available.", { status: 404 });
+  }
+
   const session = await requireStudentSession();
   const supabase = createServerSupabaseClient();
   const student = await getStudentById(supabase, session.id);

@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { buildRenderableQuestions, createServerSupabaseClient, getPublishedTaskByIdForStudent, getStudentById, gradeQuestions, parseTaskContent, submitAttempt, type QuestionResult, type TaskContent } from "@ielts-pro/shared";
+import { isUuid } from "@/lib/ids";
 import { requireStudentSession } from "@/lib/session";
 
 export type SubmitResult = {
@@ -17,6 +18,8 @@ export type SubmitResult = {
 export async function submitTaskAttempt(formData: FormData): Promise<SubmitResult> {
   const session = await requireStudentSession();
   const taskId = String(formData.get("taskId") || "");
+  if (!isUuid(taskId)) return { ok: false, error: "unavailable" };
+
   const supabase = createServerSupabaseClient();
   const student = await getStudentById(supabase, session.id);
   const task = await getPublishedTaskByIdForStudent(supabase, taskId, student?.group_id ?? session.group_id);
