@@ -2,7 +2,7 @@ import Link from "next/link";
 import { createServerSupabaseClient, getDefaultSiteSettings, getSiteSettings, siteContent } from "@ielts-pro/shared";
 import { PublicShell } from "./components/PublicShell";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 3600;
 
 async function loadSettings() {
   try {

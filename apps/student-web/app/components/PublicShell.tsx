@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import type { PublicSiteSettings } from "@ielts-pro/shared";
 
 const menuItems = [
@@ -18,25 +18,11 @@ const menuItems = [
 
 export function PublicShell({ children, settings }: { children: ReactNode; settings?: PublicSiteSettings }) {
   const [open, setOpen] = useState(false);
-  const [liveSettings, setLiveSettings] = useState<PublicSiteSettings | undefined>(settings);
-  const activeSettings = liveSettings || settings;
+  const activeSettings = settings;
   const brandName = activeSettings?.brand_name || "IELTS Pro";
   const teacherName = activeSettings?.teacher_name || "Miravzal";
   const logoText = activeSettings?.logo_text || "IP";
   const menu = menuItems.filter((item) => activeSettings?.free_course_enabled === false ? item.href !== "/free-course" : true);
-
-  useEffect(() => {
-    let active = true;
-    fetch("/api/site-settings", { cache: "no-store" })
-      .then((response) => (response.ok ? response.json() : null))
-      .then((data: PublicSiteSettings | null) => {
-        if (active && data) setLiveSettings(data);
-      })
-      .catch(() => undefined);
-    return () => {
-      active = false;
-    };
-  }, []);
 
   return (
     <div className="public-shell">
