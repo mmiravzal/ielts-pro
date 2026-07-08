@@ -68,7 +68,7 @@ function TaskList({ lessons, tasks, completedIds, empty }: { lessons: Lesson[]; 
             </article>
           );
         })}
-        {!tasks.length ? <div className="student-empty-card"><h3>{empty}</h3><p>Ask your teacher to publish a full test from the admin panel.</p></div> : null}
+        {!tasks.length ? <div className="student-empty-card"><h3>{empty}</h3><p>Ask your teacher to publish a full test from the teacher workspace.</p></div> : null}
       </div>
     </section>
   );

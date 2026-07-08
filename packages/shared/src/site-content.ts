@@ -97,7 +97,7 @@ export const siteContent = {
     included: [
       { title: "Real exam conditions", description: "Timers, section navigation, and answer review before submit." },
       { title: "Computer-based interface", description: "Split reading/listening workspace with answer inputs on the right." },
-      { title: "Teacher feedback queue", description: "Writing and speaking work can be reviewed from the admin panel." },
+      { title: "Teacher feedback queue", description: "Writing and speaking work can be reviewed from the teacher workspace." },
       { title: "Score breakdown", description: "Results are stored by student, skill, lesson, and attempt." },
       { title: "Content control", description: "Teachers decide which group sees each lesson or full test." },
       { title: "Progress history", description: "Students can return to attempts and see reviewed work." }

@@ -24,7 +24,7 @@ export function StudentShell({
     return (
       <div className="student-exam-shell">
         <header className="student-exam-topbar">
-          <Link className="student-app-brand" href="/dashboard">
+          <Link className="student-app-brand" href="/dashboard" prefetch={false}>
             <span aria-hidden="true">IP</span>
             <strong>IELTS Pro</strong>
           </Link>
@@ -43,7 +43,7 @@ export function StudentShell({
   return (
     <div className="student-app-shell">
       <aside className="student-app-sidebar">
-        <Link className="student-app-brand" href="/dashboard">
+        <Link className="student-app-brand" href="/dashboard" prefetch={false}>
           <span aria-hidden="true">IP</span>
           <strong>IELTS Pro</strong>
         </Link>
@@ -77,10 +77,10 @@ export function StudentShell({
             </label>
           </form>
           <div className="student-page-actions">
-            <Link className="student-icon-button" href="/results" aria-label="Results">R</Link>
-            <Link className="student-icon-button" href="/practice" aria-label="Practice tests">P</Link>
-            <Link className="student-outline-button" href="/lessons">Lessons</Link>
-            <Link className="student-user-pill" href="/profile">{name}</Link>
+            <Link className="student-icon-button" href="/results" aria-label="Results" prefetch={false}>R</Link>
+            <Link className="student-icon-button" href="/practice" aria-label="Practice tests" prefetch={false}>P</Link>
+            <Link className="student-outline-button" href="/lessons" prefetch={false}>Lessons</Link>
+            <Link className="student-user-pill" href="/profile" prefetch={false}>{name}</Link>
           </div>
         </header>
         {children}

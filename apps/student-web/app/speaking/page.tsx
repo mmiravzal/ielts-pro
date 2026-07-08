@@ -72,7 +72,7 @@ function SkillTaskList({ lessons, tasks, completedIds }: { lessons: Lesson[]; ta
       {!tasks.length ? (
         <div className="student-empty-card">
           <h3>No speaking tasks yet</h3>
-          <p>Your teacher can publish speaking prompts from the admin panel. Until then, use Reading, Listening, and Writing practice.</p>
+          <p>Your teacher can publish speaking prompts from the teacher workspace. Until then, use Reading, Listening, and Writing practice.</p>
         </div>
       ) : null}
     </div>

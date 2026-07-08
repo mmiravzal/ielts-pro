@@ -75,7 +75,7 @@ export default async function LessonDetailPage({ params }: { params: Promise<{ l
             {!lessonTasks.length ? (
               <div className="student-empty-card">
                 <h3>No tasks in this lesson</h3>
-                <p>Your teacher can add Reading, Listening, Writing, or Mock tasks from the admin panel.</p>
+                <p>Your teacher can add Reading, Listening, Writing, or Mock tasks from the teacher workspace.</p>
               </div>
             ) : null}
           </div>

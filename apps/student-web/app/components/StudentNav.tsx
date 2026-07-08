@@ -34,7 +34,7 @@ export function StudentNav() {
       {items.map((item) => {
         const active = item.aliases.some((alias) => pathname === alias || pathname.startsWith(`${alias}/`));
         return (
-          <Link href={item.href} className={`student-app-nav-link${active ? " is-active" : ""}`} aria-current={active ? "page" : undefined} key={item.href}>
+          <Link href={item.href} className={`student-app-nav-link${active ? " is-active" : ""}`} aria-current={active ? "page" : undefined} key={item.href} prefetch={false}>
             <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">{icons[item.icon]}</svg>
             <strong>{item.label}</strong>
           </Link>

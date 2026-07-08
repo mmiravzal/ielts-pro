@@ -73,7 +73,7 @@ function VocabularyTaskList({ lessons, tasks, completedIds }: { lessons: Lesson[
       {!tasks.length ? (
         <div className="student-empty-card">
           <h3>No vocabulary tasks yet</h3>
-          <p>Your teacher can publish vocabulary drills from the admin panel. Until then, continue Reading and Listening practice.</p>
+          <p>Your teacher can publish vocabulary drills from the teacher workspace. Until then, continue Reading and Listening practice.</p>
         </div>
       ) : null}
     </div>

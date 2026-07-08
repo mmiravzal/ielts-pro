@@ -32,16 +32,16 @@ export function PublicShell({ children, settings }: { children: ReactNode; setti
             <span className="menu-lines" aria-hidden="true"><i /><i /><i /></span>
             Menu
           </button>
-          <Link className="public-home-icon" href="/" aria-label="Home">Home</Link>
+          <Link className="public-home-icon" href="/" aria-label="Home" prefetch={false}>Home</Link>
         </div>
-        <Link className="public-brand" href="/">
+        <Link className="public-brand" href="/" prefetch={false}>
           <span className="public-logo-mark">{logoText}</span>
           <span>{brandName}</span>
           <small>{teacherName}</small>
         </Link>
         <div className="public-topbar-side public-topbar-right">
-          <Link className="public-signin" href="/login">Student login</Link>
-          <Link className="public-cta" href="/practice-tests">Start</Link>
+          <Link className="public-signin" href="/login" prefetch={false}>Student login</Link>
+          <Link className="public-cta" href="/practice-tests" prefetch={false}>Start</Link>
         </div>
       </header>
 
@@ -58,14 +58,14 @@ export function PublicShell({ children, settings }: { children: ReactNode; setti
             </div>
             <nav className="public-drawer-nav">
               {menu.map((item, index) => (
-                <Link href={item.href} key={item.href} onClick={() => setOpen(false)}>
+                <Link href={item.href} key={item.href} onClick={() => setOpen(false)} prefetch={false}>
                   <span>{item.label}</span>
                   {item.tag ? <small>{item.tag}</small> : null}
                   <i aria-hidden="true">{index + 1}</i>
                 </Link>
               ))}
             </nav>
-            <Link className="drawer-action" href="/login" onClick={() => setOpen(false)}>Enter student portal</Link>
+            <Link className="drawer-action" href="/login" onClick={() => setOpen(false)} prefetch={false}>Enter student portal</Link>
           </aside>
         </div>
       ) : null}
@@ -74,7 +74,7 @@ export function PublicShell({ children, settings }: { children: ReactNode; setti
 
       <footer className="public-footer">
         <div>
-          <Link className="public-brand public-brand-footer" href="/">
+          <Link className="public-brand public-brand-footer" href="/" prefetch={false}>
             <span className="public-logo-mark">{logoText}</span>
             <span>{brandName}</span>
           </Link>
@@ -82,22 +82,22 @@ export function PublicShell({ children, settings }: { children: ReactNode; setti
         </div>
         <nav>
           <strong>Practice</strong>
-          <Link href="/practice-tests">Practice tests</Link>
-          <Link href="/writing-practice">Writing practice</Link>
-          <Link href="/article-lessons">Article lessons</Link>
-          <Link href="/free-course">Listening course</Link>
+          <Link href="/practice-tests" prefetch={false}>Practice tests</Link>
+          <Link href="/writing-practice" prefetch={false}>Writing practice</Link>
+          <Link href="/article-lessons" prefetch={false}>Article lessons</Link>
+          <Link href="/free-course" prefetch={false}>Listening course</Link>
         </nav>
         <nav>
           <strong>Information</strong>
-          <Link href="/student-results">Student results</Link>
-          <Link href="/blog">Blog</Link>
-          <Link href="/about">About</Link>
-          <Link href="/contact">Contact</Link>
+          <Link href="/student-results" prefetch={false}>Student results</Link>
+          <Link href="/blog" prefetch={false}>Blog</Link>
+          <Link href="/about" prefetch={false}>About</Link>
+          <Link href="/contact" prefetch={false}>Contact</Link>
         </nav>
         <nav>
           <strong>Portal</strong>
-          <Link href="/login">Student login</Link>
-          <Link href="/mock-exam">Mock exam</Link>
+          <Link href="/login" prefetch={false}>Student login</Link>
+          <Link href="/mock-exam" prefetch={false}>Mock exam</Link>
         </nav>
       </footer>
     </div>
