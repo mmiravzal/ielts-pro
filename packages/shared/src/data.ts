@@ -8,6 +8,56 @@ const DEFAULT_GROUPS = [
   { name: "Pre-ielts group", slug: "pre-ielts", order: 3 }
 ] as const;
 
+const STUDENT_LESSON_LIST_SELECT = `
+  id,
+  title,
+  description,
+  order,
+  published,
+  status,
+  skill,
+  group_id,
+  groups(name,slug)
+`;
+
+const STUDENT_TASK_LIST_SELECT = `
+  id,
+  lesson_id,
+  title,
+  skill,
+  task_type,
+  order,
+  audio_url,
+  html_url,
+  html_path,
+  source_type,
+  content_status,
+  content_type,
+  subtype,
+  question_count,
+  answer_count,
+  audio_detected,
+  warnings,
+  archived_at,
+  updated_at,
+  created_at
+`;
+
+const STUDENT_TASK_LIST_WITH_LESSON_SELECT = `
+  ${STUDENT_TASK_LIST_SELECT}
+`;
+
+const STUDENT_SUBMISSION_SUMMARY_SELECT = `
+  id,
+  student_id,
+  task_id,
+  score,
+  total,
+  feedback,
+  submitted_at,
+  tasks(title,skill,lessons(title))
+`;
+
 type PublicSiteSettingsInput = Partial<Omit<PublicSiteSettings, "id" | "updated_at">>;
 
 export function getDefaultSiteSettings(): PublicSiteSettings {
@@ -55,11 +105,11 @@ export async function getPublishedTasks(supabase: SupabaseClient) {
   if (!lessonIds.length) return { lessons, tasks: [] as Task[] };
   const { data, error } = await supabase
     .from("tasks")
-    .select("*")
+    .select(STUDENT_TASK_LIST_SELECT)
     .in("lesson_id", lessonIds)
     .is("archived_at", null)
     .order("order", { ascending: true });
-  if (!error) return { lessons, tasks: ((data || []) as Task[]).filter(isStudentVisibleTask) };
+  if (!error) return { lessons, tasks: normalizeStudentTaskList(data).filter(isStudentVisibleTask) };
   if (!isMissingContentMetadataColumnError(error)) throw error;
   const fallback = await supabase
     .from("tasks")
@@ -75,22 +125,22 @@ export async function getPublishedTasksForStudent(supabase: SupabaseClient, grou
   try {
     const { data: lessonsData, error: lessonError } = await supabase
       .from("lessons")
-      .select("*,groups(name,slug)")
+      .select(STUDENT_LESSON_LIST_SELECT)
       .eq("published", true)
       .or(`group_id.eq.${groupId},group_id.is.null`)
       .order("order", { ascending: true });
     if (lessonError) throw lessonError;
-    const lessons = (lessonsData || []) as Lesson[];
+    const lessons = normalizeLessonList(lessonsData);
     const lessonIds = lessons.map((lesson) => lesson.id);
     if (!lessonIds.length) return { lessons, tasks: [] as Task[] };
     const { data: tasksData, error: tasksError } = await supabase
       .from("tasks")
-      .select("*,lessons(title,published,group_id,groups(name,slug))")
+      .select(STUDENT_TASK_LIST_WITH_LESSON_SELECT)
       .in("lesson_id", lessonIds)
       .is("archived_at", null)
       .order("order", { ascending: true });
     if (tasksError) throw tasksError;
-    return { lessons, tasks: ((tasksData || []) as Task[]).filter(isStudentVisibleTask) };
+    return { lessons, tasks: normalizeStudentTaskList(tasksData).filter(isStudentVisibleTask) };
   } catch (error) {
     if (!isMissingGroupLessonColumnError(error) && !isMissingContentMetadataColumnError(error)) throw error;
     return getPublishedTasks(supabase);
@@ -288,10 +338,10 @@ export async function revokeAllStudentDeviceSessions(supabase: SupabaseClient, s
 export async function getStudentSubmissions(supabase: SupabaseClient, studentId: string) {
   const { data, error } = await supabase
     .from("submissions")
-    .select("*,tasks(title,skill,lessons(title))")
+    .select(STUDENT_SUBMISSION_SUMMARY_SELECT)
     .eq("student_id", studentId)
     .order("submitted_at", { ascending: false });
-  if (!error) return (data || []) as Submission[];
+  if (!error) return normalizeStudentSubmissionList(data);
   if (!isMissingRelationOrColumnError(error)) throw error;
   const fallback = await supabase
     .from("submissions")
@@ -368,6 +418,28 @@ function isStudentVisibleTask(task: Task) {
   const status = String(task.content_status || "").toLowerCase();
   if (!status) return true;
   return status === "published";
+}
+
+function normalizeStudentTaskList(data: unknown): Task[] {
+  return ((data || []) as unknown as Task[]).map((task) => ({
+    ...task,
+    content: task.content ?? null
+  }));
+}
+
+function normalizeLessonList(data: unknown): Lesson[] {
+  return ((data || []) as Array<Lesson & { groups?: Lesson["groups"] | Lesson["groups"][] }>).map((lesson) => ({
+    ...lesson,
+    groups: Array.isArray(lesson.groups) ? (lesson.groups[0] ?? null) : (lesson.groups ?? null)
+  }));
+}
+
+function normalizeStudentSubmissionList(data: unknown): Submission[] {
+  return ((data || []) as unknown as Submission[]).map((submission) => ({
+    ...submission,
+    answer: submission.answer ?? null,
+    results: submission.results ?? null
+  }));
 }
 
 export async function getSubmissionForTask(supabase: SupabaseClient, studentId: string, taskId: string) {

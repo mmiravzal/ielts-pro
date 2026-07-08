@@ -6,6 +6,10 @@ import { redirect } from "next/navigation";
 import { createServerSupabaseClient, validateStudentDeviceSession, type StudentSession } from "@ielts-pro/shared";
 
 const COOKIE_NAME = "ielts_student_session";
+const SESSION_VALIDATION_CACHE_TTL_MS = 10_000;
+const MAX_SESSION_VALIDATION_CACHE_ENTRIES = 200;
+
+const sessionValidationCache = new Map<string, { expiresAt: number }>();
 
 function secret() {
   return process.env.STUDENT_SESSION_SECRET || "dev-student-session-secret-change-me";
@@ -49,13 +53,21 @@ export async function requireStudentSession() {
   if (session.device_session_id === "legacy" && session.session_token === "legacy") {
     return session;
   }
+  const sessionTokenHash = hashStudentSessionToken(session.session_token);
+  const cacheKey = getSessionValidationCacheKey(session, sessionTokenHash);
+  const cached = sessionValidationCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return session;
+  }
+  if (cached) sessionValidationCache.delete(cacheKey);
+
   const requestHeaders = await headers();
   let valid = false;
   try {
     valid = await validateStudentDeviceSession(createServerSupabaseClient(), {
       studentId: session.id,
       deviceSessionId: session.device_session_id,
-      sessionTokenHash: hashStudentSessionToken(session.session_token),
+      sessionTokenHash,
       userAgent: requestHeaders.get("user-agent")
     });
   } catch (error) {
@@ -68,6 +80,7 @@ export async function requireStudentSession() {
   if (!valid) {
     redirect("/login?error=session-revoked");
   }
+  rememberValidSession(cacheKey);
   return session;
 }
 
@@ -82,6 +95,18 @@ export function createStudentSessionToken() {
 
 export function hashStudentSessionToken(token: string) {
   return crypto.createHash("sha256").update(token).digest("hex");
+}
+
+function getSessionValidationCacheKey(session: StudentSession, sessionTokenHash: string) {
+  return `${session.id}:${session.device_session_id}:${sessionTokenHash}`;
+}
+
+function rememberValidSession(cacheKey: string) {
+  if (sessionValidationCache.size >= MAX_SESSION_VALIDATION_CACHE_ENTRIES) {
+    const oldestKey = sessionValidationCache.keys().next().value;
+    if (oldestKey) sessionValidationCache.delete(oldestKey);
+  }
+  sessionValidationCache.set(cacheKey, { expiresAt: Date.now() + SESSION_VALIDATION_CACHE_TTL_MS });
 }
 
 function isMissingDeviceSessionsError(error: unknown) {

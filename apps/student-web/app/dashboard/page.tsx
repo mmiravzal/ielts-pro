@@ -1,7 +1,7 @@
 import Link from "next/link";
-import { createServerSupabaseClient, getPublishedTasksForStudent, getStudentById, getStudentSubmissions } from "@ielts-pro/shared";
 import { requireStudentSession } from "@/lib/session";
 import { StudentShell } from "../components/StudentShell";
+import { getStudentWorkspaceData } from "../student-data";
 import {
   completionState,
   feedbackSubmissions,
@@ -25,13 +25,7 @@ const MOTIVATION = [
 
 export default async function DashboardPage() {
   const session = await requireStudentSession();
-  const supabase = createServerSupabaseClient();
-  const student = await getStudentById(supabase, session.id);
-  const currentGroupId = student?.group_id ?? session.group_id;
-  const [{ tasks }, submissions] = await Promise.all([
-    getPublishedTasksForStudent(supabase, currentGroupId),
-    getStudentSubmissions(supabase, session.id)
-  ]);
+  const { groupName, student, tasks, submissions } = await getStudentWorkspaceData(session);
 
   const progress = completionState(tasks, submissions);
   const next = nextTask(tasks, submissions);
@@ -47,7 +41,7 @@ export default async function DashboardPage() {
   const motivation = MOTIVATION[now.getDay() % MOTIVATION.length];
 
   return (
-    <StudentShell name={session.name} groupName={student?.groups?.name || "Group pending"}>
+    <StudentShell name={session.name} groupName={groupName || student?.groups?.name || "Group pending"}>
       <main className="student-page student-dash">
         <section className="student-dash-top">
           <article className="student-dash-welcome">

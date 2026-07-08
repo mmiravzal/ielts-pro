@@ -23,28 +23,50 @@ export type StudentWorkspaceData = {
   errorMessage: string | null;
 };
 
+const WORKSPACE_CACHE_TTL_MS = 10_000;
+const MAX_WORKSPACE_CACHE_ENTRIES = 100;
+
+const workspaceCache = new Map<string, { expiresAt: number; data: StudentWorkspaceData }>();
+
 export async function getStudentWorkspaceData(session: StudentSession): Promise<StudentWorkspaceData> {
+  const cacheKey = getWorkspaceCacheKey(session);
+  const cached = workspaceCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.data;
+  }
+  if (cached) workspaceCache.delete(cacheKey);
+
   const supabase = createServerSupabaseClient();
 
   try {
-    const student = await getStudentById(supabase, session.id);
-    const groupId = student?.group_id ?? session.group_id ?? null;
-    const groupName = student?.groups?.name ?? (groupId ? "Assigned group" : null);
-    const [{ lessons, tasks }, submissions] = await Promise.all([
-      getPublishedTasksForStudent(supabase, groupId),
-      getStudentSubmissions(supabase, session.id)
+    const sessionGroupId = session.group_id ?? null;
+    const studentTasksPromise = sessionGroupId
+      ? getPublishedTasksForStudent(supabase, sessionGroupId)
+      : Promise.resolve(null);
+    const [student, submissions, sessionWorkspace] = await Promise.all([
+      getStudentById(supabase, session.id),
+      getStudentSubmissions(supabase, session.id),
+      studentTasksPromise
     ]);
+    const groupId = student?.group_id ?? sessionGroupId;
+    const groupName = student?.groups?.name ?? (groupId ? "Assigned group" : null);
+    const workspace = sessionWorkspace && groupId === sessionGroupId
+      ? sessionWorkspace
+      : await getPublishedTasksForStudent(supabase, groupId);
 
-    return {
+    const data = {
       groupId,
       groupName,
       student,
-      lessons,
-      tasks,
+      lessons: workspace.lessons,
+      tasks: workspace.tasks,
       submissions,
       unavailable: false,
       errorMessage: null
     };
+
+    rememberWorkspace(cacheKey, data);
+    return data;
   } catch (error) {
     const message = error instanceof Error ? error.message : "Practice data could not be loaded.";
 
@@ -59,4 +81,16 @@ export async function getStudentWorkspaceData(session: StudentSession): Promise<
       errorMessage: message
     };
   }
+}
+
+function getWorkspaceCacheKey(session: StudentSession) {
+  return `${session.id}:${session.group_id ?? "no-group"}`;
+}
+
+function rememberWorkspace(cacheKey: string, data: StudentWorkspaceData) {
+  if (workspaceCache.size >= MAX_WORKSPACE_CACHE_ENTRIES) {
+    const oldestKey = workspaceCache.keys().next().value;
+    if (oldestKey) workspaceCache.delete(oldestKey);
+  }
+  workspaceCache.set(cacheKey, { expiresAt: Date.now() + WORKSPACE_CACHE_TTL_MS, data });
 }
