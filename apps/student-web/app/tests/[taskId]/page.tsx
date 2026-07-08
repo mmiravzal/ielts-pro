@@ -3,13 +3,11 @@ import { notFound } from "next/navigation";
 import { Badge, Button, Card, EmptyState, Input, QuestionNavigator } from "@ielts-pro/ui";
 import { buildRenderableQuestions, createServerSupabaseClient, getPublishedTaskByIdForStudent, getStudentById, getSubmissionForTask, getTaskAudioUrl, parseTaskContent, sanitizeTeacherHtml, type Question, type Task, type TaskContent } from "@ielts-pro/shared";
 import { requireStudentSession } from "@/lib/session";
-import { HtmlTestViewer } from "../../components/HtmlTestViewer";
+import { HtmlTestRenderer } from "../../components/HtmlTestRenderer";
 import { StandardTestForm } from "../../components/StandardTestForm";
 import { StudentShell } from "../../components/StudentShell";
 import { WritingAnswerBox } from "../../components/WritingAnswerBox";
 import { TestTimer } from "./TestTimer";
-
-
 
 export default async function TestPage({ params }: { params: Promise<{ taskId: string }> }) {
   const { taskId } = await params;
@@ -25,71 +23,21 @@ export default async function TestPage({ params }: { params: Promise<{ taskId: s
 
   if (task.html_path) {
     const download = await supabase.storage.from("html-tests").download(task.html_path);
-    let htmlTest: string | null = null;
+    let rawHtml: string | null = null;
     if (download.data) {
-      const rawHtml = await download.data.text();
-      const bridge = `<script>
-(function(){
-  var TASK_ID = ${JSON.stringify(task.id)};
-  var SUBMITTED = false;
-
-  window.submitIeltsScore = async function(result){
-    if (SUBMITTED) return;
-    result = result || {};
-    SUBMITTED = true;
-    try {
-      var res = await fetch('/api/html-attempts', {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ taskId: TASK_ID, score: result.score, total: result.total, answers: result.answers || null, results: result.results || null })
-      });
-      var json = await res.json();
-      if (!json || !json.ok) { console.error('submitIeltsScore rejected', json); SUBMITTED = false; return json; }
-      try { window.parent.postMessage({ type: 'ielts-submit-result', score: json.score, total: json.total, results: result.results || null }, '*'); } catch(e) {}
-      return json;
-    } catch (err) {
-      console.error('submitIeltsScore failed', err);
-      SUBMITTED = false;
-      return { ok: false };
-    }
-  };
-
-  function injectFallbackButton() {
-    var btn = document.createElement('button');
-    btn.textContent = 'Submit results';
-    btn.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:99999;padding:12px 24px;background:#1d4ed8;color:#fff;border:none;border-radius:8px;font-size:16px;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.2)';
-    btn.onclick = function(){
-      var text = prompt('Enter your score (e.g. 7/10):');
-      if (!text) return;
-      var m = text.match(/(\\d+)\\s*\\/\\s*(\\d+)/);
-      if (!m) return alert('Format: score/total (e.g. 7/10)');
-      window.submitIeltsScore({ score: Number(m[1]), total: Number(m[2]), answers: {}, results: [] });
-      btn.remove();
-    };
-    document.body.appendChild(btn);
-  }
-
-  setTimeout(function(){
-    if (!SUBMITTED) injectFallbackButton();
-  }, 60000);
-})();
-</script>`;
-      htmlTest = rawHtml.includes("</body>")
-        ? rawHtml.replace("</body>", `${bridge}</body>`)
-        : `${rawHtml}${bridge}`;
+      rawHtml = await download.data.text();
     }
 
     return (
       <StudentShell name={session.name}>
         <main className="test-page html-test">
-          {!htmlTest ? (
+          {!rawHtml ? (
             <div className="html-test-viewer-status">
               <p className="form-error">Test file is missing. Ask your teacher to re-upload it.</p>
             </div>
           ) : (
-            <HtmlTestViewer
-              htmlTest={htmlTest}
+            <HtmlTestRenderer
+              rawHtml={rawHtml}
               task={task}
               existingSubmission={existingSubmission}
               skill={task.skill}

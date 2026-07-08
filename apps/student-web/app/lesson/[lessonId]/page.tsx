@@ -66,7 +66,7 @@ export default async function LessonDetailPage({ params }: { params: Promise<{ l
                     <small>{taskSummary(task, lessons)}</small>
                   </div>
                   <span className={`student-status-pill ${submitted ? "is-done" : ""}`}>{submitted ? "Submitted" : "Open"}</span>
-                  <Link className="student-small-button" href={`/tests/${task.id}`} target="_blank" rel="noopener noreferrer">
+                  <Link className="student-small-button" href={`/tests/${task.id}`}>
                     {submitted ? "Review" : "Start"}
                   </Link>
                 </article>

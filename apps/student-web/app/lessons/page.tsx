@@ -57,7 +57,7 @@ export default async function LessonsPage() {
                 </div>
                 <div className="student-lesson-tasks">
                   {lessonTasks.slice(0, 4).map((task) => (
-                    <Link href={`/tests/${task.id}`} target="_blank" rel="noopener noreferrer" className="student-lesson-task" key={task.id}>
+                    <Link href={`/tests/${task.id}`} className="student-lesson-task" key={task.id}>
                       <span className={`student-skill-icon tone-${toneForSkill(task.skill)}`}>{labelForSkill(task.skill).slice(0, 1)}</span>
                       <div>
                         <strong>{task.title}</strong>

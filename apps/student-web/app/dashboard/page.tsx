@@ -65,8 +65,6 @@ export default async function DashboardPage() {
               <Link
                 className="student-dash-quickstart"
                 href={quickHref}
-                target={next ? "_blank" : undefined}
-                rel={next ? "noopener noreferrer" : undefined}
               >
                 Quick start
               </Link>

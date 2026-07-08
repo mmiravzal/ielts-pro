@@ -63,7 +63,7 @@ function SkillTaskList({ lessons, tasks, completedIds }: { lessons: Lesson[]; ta
               </div>
             </div>
             <span className={`student-status-pill ${submitted ? "is-done" : ""}`}>{submitted ? "Submitted" : "Open"}</span>
-            <Link className="student-primary-button" href={`/tests/${task.id}`} target="_blank" rel="noopener noreferrer">
+            <Link className="student-primary-button" href={`/tests/${task.id}`}>
               {submitted ? "Review" : "Start practice"}
             </Link>
           </article>
